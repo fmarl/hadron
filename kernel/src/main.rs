@@ -34,10 +34,10 @@ fn _start_x86_64() -> ! {
     kprintln!("Booting hadron...");
 
     kprintln!("Setting up GDT: ");
-    crate::arch::x86_64::gdt::init();
+    arch_x86_64::gdt::init();
 
     kprintln!("Setting up IDT: ");
-    crate::arch::x86_64::idt::init();
+    arch_x86_64::idt::init();
 
     #[cfg(debug_assertions)]
     kprint!("Reached hcf()");

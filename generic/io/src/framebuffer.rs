@@ -15,19 +15,20 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-use self::default::WRITER;
-use core::fmt::{Arguments, Write};
+use self::vga::WRITER;
+use core::{fmt::{Arguments, Write}, u64};
 use generic_exception::hcf;
-use limine::{Framebuffer, NonNullPtr};
 
-mod default;
+mod vga;
 mod font;
 
-static FRAMEBUFFER_REQUEST: limine::request::FramebufferRequest =
-    limine::request::FramebufferRequest::new();
+pub trait Framebuffer {
+    fn new() -> Self;
+}
 
-pub fn init() -> &'static NonNullPtr<Framebuffer> {
-    let framebuffer: &NonNullPtr<Framebuffer>;
+pub fn init<F>() -> &'static F
+where F: Framebuffer  {
+    let framebuffer: F;
 
     if let Some(framebuffer_response) = FRAMEBUFFER_REQUEST.get_response().get() {
         if framebuffer_response.framebuffer_count < 1 {

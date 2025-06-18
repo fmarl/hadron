@@ -17,14 +17,31 @@
 
 use core::fmt::{Arguments, Write};
 use lazy_static::lazy_static;
-use limine::{Framebuffer, NonNullPtr};
 use spin::Mutex;
 
 use crate::framebuffer::font::{FONT, FONT_DIMENSIONS};
-use crate::framebuffer::init;
+use crate::framebuffer::{init, Framebuffer};
 
 lazy_static! {
     pub static ref WRITER: Mutex<FramebufferWriter> = Mutex::new(FramebufferWriter::new());
+}
+
+pub struct VgaFramebuffer {
+
+}
+
+impl Framebuffer for VgaFramebuffer {
+    fn new() -> Self {
+        todo!()
+    }
+}
+
+pub struct VgaFramebufferWriter {
+    framebuffer: &'static VgaFramebuffer,
+    row: u64,
+    col: u64,
+    pub fg: Pixel,
+    pub bg: Pixel,
 }
 
 pub enum Colors {
@@ -38,14 +55,6 @@ pub struct Pixel {
     r: u8,
     g: u8,
     b: u8,
-}
-
-pub struct FramebufferWriter {
-    framebuffer: &'static NonNullPtr<Framebuffer>,
-    row: u64,
-    col: u64,
-    pub fg: Pixel,
-    pub bg: Pixel,
 }
 
 impl Pixel {
