@@ -2,26 +2,28 @@
 name = "hadron"
 version = "0.0.2"
 authors = ["Florian Marrero Liestmann <f.m.liestmann@fx-ttr.de>"]
-edition = "2021"
+edition = "2024"
 build = "build.rs"
 
 [dependencies]
-lazy_static = "1.5.0"
 
-[dependencies.uio]
-path = "../domains/uio"
+spin = "0.10.0"
+volatile = "0.6.1"
+limine = "0.5.0"
 
-[dependencies.security]
-path = "../domains/security"
+[dependencies.lazy_static]
+version = "1.5.0"
+features = ["spin_no_std"]
 
-[dependencies.gdt]
-path = "../domains/gdt"
 
-[dependencies.idt]
-path = "../domains/idt"
+[dependencies.arch-x86_64]
+path = "../arch/x86_64"
 
-[dependencies.exception]
-path = "../domains/exception"
+[dependencies.generic-io]
+path = "../generic/io"
+
+[dependencies.generic-exception]
+path = "../generic/exception"
 
 [profile.dev]
 panic = "abort"

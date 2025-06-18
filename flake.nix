@@ -14,10 +14,6 @@
       };
     };
 
-    crane = {
-      url = "github:ipetkov/crane";
-    };
-
     fenix = {
       url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -51,21 +47,10 @@
           "llvm-tools-preview"
         ]);
 
-        craneLib = (inputs.crane.mkLib pkgs).overrideToolchain fenix-toolchain;
-
-        hadron = craneLib.buildPackage {
-          src = craneLib.cleanCargoSource ./.;
-
-          doCheck = false;
-
-          buildInputs = [ ];
-        };
-
         code = inputs.code-nix.packages.${system}.default;
       in
       {
         checks = {
-          inherit hadron;
           pre-commit-check = inputs.pre-commit-hooks.lib.${system}.run {
             src = ./.;
             hooks = {
@@ -73,8 +58,6 @@
             };
           };
         };
-
-        packages.default = hadron;
 
         devShells.default = pkgs.mkShell {
           inputsFrom = builtins.attrValues self.checks;

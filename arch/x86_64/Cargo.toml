@@ -1,0 +1,20 @@
+[package]
+name = "arch-x86_64"
+version = "0.0.2"
+authors = ["Florian Marrero Liestmann <f.m.liestmann@fx-ttr.de>"]
+edition = "2024"
+
+[dependencies]
+bit_field = "0.10.2"
+bitflags = "2.6.0"
+
+[dependencies.lazy_static]
+version = "1.5.0"
+features = ["spin_no_std"]
+
+
+[dependencies.generic-io]
+path = "../../generic/io"
+
+[dependencies.x86_64]
+path = "../../libs/x86_64"

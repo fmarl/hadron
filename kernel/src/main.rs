@@ -1,6 +1,6 @@
 /*
  * This file is part of the hadron distribution (https://github.com/fxttr/hadron).
- * Copyright (c) 2023 Florian Marrero Liestmann.
+ * Copyright (c) 2025 Florian Marrero Liestmann.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,25 +18,26 @@
 #![no_std]
 #![no_main]
 
-use exception::hcf;
+mod cores;
 
-use uio::{kprint, kprintln};
+use generic_exception::hcf;
+use generic_io::{kprint, kprintln};
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 unsafe extern "C" fn _start() -> ! {
     #[cfg(target_arch = "x86_64")]
     _start_x86_64()
 }
 
 fn _start_x86_64() -> ! {
-    kprintln!("Copyright (C) 2023 Florian Marrero Liestmann\n");
+    kprintln!("Copyright (C) 2025 Florian Marrero Liestmann\n");
     kprintln!("Booting hadron...");
 
     kprintln!("Setting up GDT: ");
-    gdt::init();
+    crate::arch::x86_64::gdt::init();
 
     kprintln!("Setting up IDT: ");
-    idt::init();
+    crate::arch::x86_64::idt::init();
 
     #[cfg(debug_assertions)]
     kprint!("Reached hcf()");

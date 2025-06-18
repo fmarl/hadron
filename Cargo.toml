@@ -4,13 +4,8 @@ resolver = "2"
 
 members = [
     "kernel",
-    "domains/apic",
-    "domains/gdt",
-    "domains/cores",
-    "domains/uio",
-    "domains/exception",
-    "domains/idt",
-    "domains/security",
     "libs/kstructs",
     "libs/x86_64",
+    "arch/x86_64",
+    "generic/io"
 ]

@@ -18,8 +18,74 @@
 use core::mem::size_of;
 
 #[cfg(target_arch = "x86_64")]
-use security::core::x86_64::segmentation::{Descriptor, SegmentSelector};
+use super::segmentation::{Descriptor, SegmentSelector, TaskStateSegment};
 use x86_64::structures::{memory::VirtualAddress, table::DescriptorTablePointer};
+
+use lazy_static::lazy_static;
+
+pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
+pub const STACK_SIZE: usize = 4096 * 5;
+
+lazy_static! {
+    static ref TASK_STATE_SEGMENT: TaskStateSegment = {
+        let mut tss = TaskStateSegment::new();
+
+        tss.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX as usize] = {
+            static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
+            let stack_start = VirtualAddress::from_ptr(unsafe { &STACK });
+            let stack_end = stack_start + STACK_SIZE;
+            stack_end
+        };
+
+        tss
+    };
+}
+
+lazy_static! {
+    static ref GLOBAL_DESCRIPTOR_TABLE: (GlobalDescriptorTable, SegmentSelectors) = {
+        let mut global_descriptor_table = GlobalDescriptorTable::new();
+        let code_segment_selector = global_descriptor_table.add(Descriptor::kernel_code_segment());
+        let tss_segment_selector =
+            global_descriptor_table.add(Descriptor::tss_segment(&TASK_STATE_SEGMENT));
+
+        (
+            global_descriptor_table,
+            SegmentSelectors {
+                code_segment_selector,
+                tss_segment_selector,
+            },
+        )
+    };
+}
+
+pub fn init() {
+    use super::segmentation::CodeSegment;
+    use core::arch::asm;
+
+    GLOBAL_DESCRIPTOR_TABLE.0.init();
+
+    #[cfg(debug_assertions)]
+    kprintln!(
+        "GDT intialized.\nCS: {}\nTSS: {}",
+        GLOBAL_DESCRIPTOR_TABLE.1.code_segment_selector.0,
+        GLOBAL_DESCRIPTOR_TABLE.1.tss_segment_selector.0
+    );
+
+    unsafe {
+        CodeSegment::set_reg(GLOBAL_DESCRIPTOR_TABLE.1.code_segment_selector);
+
+        asm!(
+            "ltr {0:x}",
+            in(reg) GLOBAL_DESCRIPTOR_TABLE.1.tss_segment_selector.0,
+            options(nostack, preserves_flags)
+        );
+    }
+}
+
+pub struct SegmentSelectors {
+    pub code_segment_selector: SegmentSelector,
+    pub tss_segment_selector: SegmentSelector,
+}
 
 pub struct GlobalDescriptorTable {
     table: [u64; 8],

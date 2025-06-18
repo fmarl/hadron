@@ -1,6 +1,6 @@
 /*
  * This file is part of the hadron distribution (https://github.com/fxttr/hadron).
- * Copyright (c) 2023 Florian Marrero Liestmann.
+ * Copyright (c) 2025 Florian Marrero Liestmann.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,6 +14,21 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-#![no_std]
 
-pub mod core;
+// To be implemented. We will provide a placeholder struct here.
+pub struct Core {
+    id: u32,
+}
+
+// For now we will use this
+impl Default for Core {
+    fn default() -> Self {
+        Self { id: 0 }
+    }
+}
+
+impl Core {
+    pub fn id(&self) -> u32 {
+        self.id
+    }
+}

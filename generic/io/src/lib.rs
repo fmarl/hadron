@@ -1,6 +1,6 @@
 /*
  * This file is part of the hadron distribution (https://github.com/fxttr/hadron).
- * Copyright (c) 2023 Florian Marrero Liestmann.
+ * Copyright (c) 2025 Florian Marrero Liestmann.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,3 +15,22 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 #![no_std]
+#![feature(allow_internal_unstable)]
+
+#[macro_use]
+pub mod framebuffer;
+
+#[allow_internal_unstable(print_internals, format_args_nl)]
+#[macro_export]
+macro_rules! kprint {
+    ($($arg:tt)*) => ($crate::io::framebuffer::_kprint(format_args!($($arg)*)));
+}
+
+#[allow_internal_unstable(print_internals, format_args_nl)]
+#[macro_export]
+macro_rules! kprintln {
+    () => (kprint!("\n"));
+    ($($arg:tt)*) => ({
+    $crate::io::framebuffer::_kprint(format_args_nl!($($arg)*));
+    })
+}

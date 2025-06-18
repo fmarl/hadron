@@ -14,10 +14,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
+#![no_std]
+#![feature(abi_x86_interrupt)]
 
-use security::core::x86_64::segmentation::SegmentSelector;
-
-pub struct SegmentSelectors {
-    pub code_segment_selector: SegmentSelector,
-    pub tss_segment_selector: SegmentSelector,
-}
+mod gdt;
+mod idt;
+mod privileges;
+mod segmentation;

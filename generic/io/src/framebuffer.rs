@@ -1,6 +1,6 @@
 /*
  * This file is part of the hadron distribution (https://github.com/fxttr/hadron).
- * Copyright (c) 2023 Florian Marrero Liestmann.
+ * Copyright (c) 2025 Florian Marrero Liestmann.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
 
 use self::default::WRITER;
 use core::fmt::{Arguments, Write};
-use exception::hcf;
+use generic_exception::hcf;
 use limine::{Framebuffer, NonNullPtr};
 
 mod default;
