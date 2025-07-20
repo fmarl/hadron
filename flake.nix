@@ -27,7 +27,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, ... }@inputs:
+  outputs = { self, nixpkgs, flake-utils, code-nix, ... }@inputs:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
@@ -47,7 +47,11 @@
           "llvm-tools-preview"
         ]);
 
-        code = inputs.code-nix.packages.${system}.default;
+        
+  code = code-nix.packages.${system}.default {
+    profiles.nix.enable = true;
+    profiles.rust.enable = true;
+  };
       in
       {
         checks = {
@@ -69,16 +73,8 @@
             parted
             xorriso
             gdb
-            (code {
-              profiles = {
-                nix = {
-                  enable = true;
-                };
-                rust = {
-                  enable = true;
-                };
-              };
-            })
+            code.editor
+            code.tooling
           ];
         };
       });
