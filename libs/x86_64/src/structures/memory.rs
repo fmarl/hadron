@@ -63,3 +63,49 @@ impl Add<usize> for VirtualAddress {
         self + rhs as u64
     }
 }
+
+/// Physical memory address
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct PhysicalAddress(u64);
+
+impl PhysicalAddress {
+    /// Create a new physical address
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+
+    /// Get the raw u64 value
+    pub const fn as_u64(self) -> u64 {
+        self.0
+    }
+}
+
+impl core::fmt::Debug for PhysicalAddress {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        write!(f, "PhysAddr({:#x})", self.0)
+    }
+}
+
+impl core::fmt::Display for PhysicalAddress {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        write!(f, "{:#x}", self.0)
+    }
+}
+
+impl Default for PhysicalAddress {
+    fn default() -> Self {
+        Self(0)
+    }
+}
+
+impl Add<u64> for PhysicalAddress {
+    type Output = Self;
+
+    #[inline]
+    fn add(self, rhs: u64) -> Self::Output {
+        PhysicalAddress::new(self.0 + rhs)
+    }
+}

@@ -26,9 +26,9 @@ fn panic(_info: &PanicInfo) -> ! {
 
 pub fn hcf() -> ! {
     unsafe {
-        asm!("cli");
+        asm!("cli", options(nomem, nostack, preserves_flags));
         loop {
-            asm!("hlt");
+            asm!("hlt", options(nomem, nostack, preserves_flags));
         }
     }
 }

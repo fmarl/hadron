@@ -1,6 +1,6 @@
 /*
  * This file is part of the hadron distribution (https://github.com/fxttr/hadron).
- * Copyright (c) 2025 Florian Marrero Liestmann.
+ * Copyright (c) 2023-2025 Florian Marrero Liestmann.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,24 +15,13 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-use core::arch::asm;
+//! Memory management module
+//!
+//! This module contains GDT, paging, and memory management subsystems.
 
-pub fn enable() {
-    unsafe {
-        asm!("sti", options(nomem, nostack));
-    }
-}
+// Note: gdt module is at super::gdt, access via crate::gdt
 
-pub fn disable() {
-    unsafe {
-        asm!("cli", options(nomem, nostack));
-    }
-}
-
-/// Trigger a breakpoint exception (INT 3)
-#[inline]
-pub fn int3() {
-    unsafe {
-        asm!("int3", options(nomem, nostack));
-    }
-}
+// TODO: Add memory management modules
+pub mod allocator;
+pub mod pmm;
+pub mod vmm;

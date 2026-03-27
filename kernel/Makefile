@@ -13,13 +13,13 @@ endif
 # Default target.
 .PHONY: all
 all:
-	cargo build --profile $(RUST_PROFILE)
+	cd .. && cargo build --profile $(RUST_PROFILE) -Zjson-target-spec --package hadron
 	cp ../target/x86_64-unknown-hadron/$(RUST_PROFILE_SUBDIR)/hadron hadron.elf
 
 # Remove object files and the final executable.
 .PHONY: clean
 clean:
-	cargo clean
+	cd .. && cargo clean
 	rm -rf hadron.elf
 
 .PHONY: distclean

@@ -6,14 +6,6 @@
     nix-vscode-extensions.url = "github:nix-community/nix-vscode-extensions";
     pre-commit-hooks.url = "github:cachix/git-hooks.nix";
 
-    code-nix = {
-      url = "github:fxttr/code-nix";
-      inputs = {
-        nixpkgs.follows = "nixpkgs";
-        extensions.follows = "nix-vscode-extensions";
-      };
-    };
-
     fenix = {
       url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -69,16 +61,6 @@
             parted
             xorriso
             gdb
-            (code {
-              profiles = {
-                nix = {
-                  enable = true;
-                };
-                rust = {
-                  enable = true;
-                };
-              };
-            })
           ];
         };
       });

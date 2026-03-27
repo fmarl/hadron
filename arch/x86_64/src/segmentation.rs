@@ -19,7 +19,7 @@ use super::privileges::PLevel;
 use bit_field::BitField;
 use bitflags::bitflags;
 use core::{arch::asm, mem::size_of};
-use x86_64::{registers::Msr, structures::memory::VirtualAddress};
+use x86_64_hal::{registers::Msr, structures::memory::VirtualAddress};
 
 pub enum Descriptor {
     UserSegment(u64),
@@ -51,7 +51,7 @@ impl Segment32 for CodeSegment {
         unsafe {
             asm!(
                 "push {sel}",
-                "lea {tmp}, [1f + rip]",
+                "lea {tmp}, [2f + rip]",
                 "push {tmp}",
                 "retfq",
                 "2:",
@@ -63,12 +63,16 @@ impl Segment32 for CodeSegment {
     }
 }
 
+#[allow(dead_code)]
 pub struct StackSegment;
 
+#[allow(dead_code)]
 pub struct DataSegment;
 
+#[allow(dead_code)]
 pub struct FSegment;
 
+#[allow(dead_code)]
 pub struct GSegment;
 
 impl SegmentSelector {
@@ -119,6 +123,7 @@ bitflags! {
     }
 }
 
+#[allow(dead_code)]
 impl DescriptorFlags {
     const COMMON: Self = Self::from_bits_truncate(
         Self::USER_SEGMENT.bits()
@@ -238,11 +243,13 @@ impl TaskStateSegment {
     }
 }
 
+#[allow(dead_code)]
 pub trait Segment32 {
     fn get_reg() -> SegmentSelector;
     fn set_reg(sel: SegmentSelector);
 }
 
+#[allow(dead_code)]
 pub trait Segment64: Segment32 {
     const BASE: Msr;
     fn read_base() -> VirtualAddress;

@@ -7,5 +7,12 @@ members = [
     "libs/kstructs",
     "libs/x86_64",
     "arch/x86_64",
-    "generic/io"
+    "generic/io",
+    "generic/exception"
 ]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

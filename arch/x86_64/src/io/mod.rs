@@ -1,6 +1,6 @@
 /*
  * This file is part of the hadron distribution (https://github.com/fxttr/hadron).
- * Copyright (c) 2025 Florian Marrero Liestmann.
+ * Copyright (c) 2023-2025 Florian Marrero Liestmann.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,24 +15,8 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-use core::arch::asm;
+//! I/O module
+//!
+//! This module contains I/O device drivers and communication interfaces.
 
-pub fn enable() {
-    unsafe {
-        asm!("sti", options(nomem, nostack));
-    }
-}
-
-pub fn disable() {
-    unsafe {
-        asm!("cli", options(nomem, nostack));
-    }
-}
-
-/// Trigger a breakpoint exception (INT 3)
-#[inline]
-pub fn int3() {
-    unsafe {
-        asm!("int3", options(nomem, nostack));
-    }
-}
+pub mod serial;

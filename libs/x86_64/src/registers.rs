@@ -16,6 +16,7 @@
  */
 
 pub mod rflags;
+pub mod control;
 
 use core::arch::asm;
 

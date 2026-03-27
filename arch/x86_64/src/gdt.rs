@@ -18,9 +18,10 @@
 use core::mem::size_of;
 
 #[cfg(target_arch = "x86_64")]
-use super::segmentation::{Descriptor, SegmentSelector, TaskStateSegment};
-use x86_64::structures::{memory::VirtualAddress, table::DescriptorTablePointer};
+use super::segmentation::{Descriptor, SegmentSelector, Segment32, TaskStateSegment};
+use x86_64_hal::structures::{memory::VirtualAddress, table::DescriptorTablePointer};
 
+use generic_io::kprintln;
 use lazy_static::lazy_static;
 
 pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
@@ -32,7 +33,7 @@ lazy_static! {
 
         tss.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX as usize] = {
             static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
-            let stack_start = VirtualAddress::from_ptr(unsafe { &STACK });
+            let stack_start = VirtualAddress::from_ptr(&raw const STACK);
             let stack_end = stack_start + STACK_SIZE;
             stack_end
         };
@@ -42,7 +43,7 @@ lazy_static! {
 }
 
 lazy_static! {
-    static ref GLOBAL_DESCRIPTOR_TABLE: (GlobalDescriptorTable, SegmentSelectors) = {
+    pub static ref GLOBAL_DESCRIPTOR_TABLE: (GlobalDescriptorTable, SegmentSelectors) = {
         let mut global_descriptor_table = GlobalDescriptorTable::new();
         let code_segment_selector = global_descriptor_table.add(Descriptor::kernel_code_segment());
         let tss_segment_selector =

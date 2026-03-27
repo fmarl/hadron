@@ -1,6 +1,6 @@
 /*
  * This file is part of the hadron distribution (https://github.com/fxttr/hadron).
- * Copyright (c) 2025 Florian Marrero Liestmann.
+ * Copyright (c) 2023-2025 Florian Marrero Liestmann.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,24 +15,15 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-use core::arch::asm;
+//! Interrupt handling module
+//!
+//! This module contains the Interrupt Descriptor Table (IDT) and
+//! all exception/interrupt handlers.
 
-pub fn enable() {
-    unsafe {
-        asm!("sti", options(nomem, nostack));
-    }
-}
+// Re-export the IDT module from parent
+// Note: In the future, idt.rs should be moved into this directory
+pub use super::idt::*;
 
-pub fn disable() {
-    unsafe {
-        asm!("cli", options(nomem, nostack));
-    }
-}
-
-/// Trigger a breakpoint exception (INT 3)
-#[inline]
-pub fn int3() {
-    unsafe {
-        asm!("int3", options(nomem, nostack));
-    }
-}
+// TODO: Add PIC/APIC modules here
+// pub mod pic;
+// pub mod apic;

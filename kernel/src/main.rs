@@ -18,26 +18,50 @@
 #![no_std]
 #![no_main]
 
+mod boot;
 mod cores;
 
 use generic_exception::hcf;
 use generic_io::{kprint, kprintln};
 
 #[unsafe(no_mangle)]
-unsafe extern "C" fn _start() -> ! {
+unsafe extern "C" fn _start(boot_info_ptr: *const boot::BootInfo) -> ! {
     #[cfg(target_arch = "x86_64")]
-    _start_x86_64()
+    _start_x86_64(boot_info_ptr)
 }
 
-fn _start_x86_64() -> ! {
+fn _start_x86_64(boot_info_ptr: *const boot::BootInfo) -> ! {
+    // Clear screen first
+    generic_io::WRITER.lock().clear_screen();
+
     kprintln!("Copyright (C) 2025 Florian Marrero Liestmann\n");
     kprintln!("Booting hadron...");
 
+    // Validate boot info
+    let boot_info = unsafe { &*boot_info_ptr };
+    if boot_info.is_valid() {
+        kprintln!("Boot info valid");
+    } else {
+        kprintln!("WARNING: Invalid boot info");
+    }
+
     kprintln!("Setting up GDT: ");
-    crate::arch::x86_64::gdt::init();
+    arch_x86_64::gdt::init();
 
     kprintln!("Setting up IDT: ");
-    crate::arch::x86_64::idt::init();
+    arch_x86_64::idt::init();
+
+    // Test exception handling (only in debug builds)
+    #[cfg(debug_assertions)]
+    {
+        kprintln!("\nTesting exception handling...");
+        kprintln!("Triggering breakpoint exception (INT 3)...");
+        arch_x86_64::int3();
+        kprintln!("Breakpoint exception handled successfully!\n");
+    }
+
+    kprintln!("Kernel initialization complete.");
+    kprintln!("System ready.\n");
 
     #[cfg(debug_assertions)]
     kprint!("Reached hcf()");

@@ -16,23 +16,20 @@
  */
 
 use core::arch::asm;
+use crate::structures::memory::VirtualAddress;
 
-pub fn enable() {
-    unsafe {
-        asm!("sti", options(nomem, nostack));
-    }
-}
+/// Control Register 2 (CR2)
+/// Contains the page fault linear address
+pub struct Cr2;
 
-pub fn disable() {
-    unsafe {
-        asm!("cli", options(nomem, nostack));
-    }
-}
-
-/// Trigger a breakpoint exception (INT 3)
-#[inline]
-pub fn int3() {
-    unsafe {
-        asm!("int3", options(nomem, nostack));
+impl Cr2 {
+    /// Read the current page fault linear address from CR2
+    #[inline]
+    pub fn read() -> VirtualAddress {
+        let value: u64;
+        unsafe {
+            asm!("mov {}, cr2", out(reg) value, options(nomem, nostack, preserves_flags));
+        }
+        VirtualAddress::new(value)
     }
 }

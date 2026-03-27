@@ -17,7 +17,16 @@
 #![no_std]
 #![feature(abi_x86_interrupt)]
 
-mod gdt;
-mod idt;
+// Core modules
+pub mod gdt;
+pub mod idt;
 mod privileges;
 mod segmentation;
+
+// Organized module structure
+pub mod interrupts;
+pub mod memory;
+pub mod io;
+
+// Re-export commonly used functions
+pub use x86_64_hal::op::interrupts::int3;

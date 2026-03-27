@@ -16,17 +16,20 @@
  */
 
 // To be implemented. We will provide a placeholder struct here.
+#[allow(dead_code)]
 pub struct Core {
     id: u32,
 }
 
 // For now we will use this
+#[allow(dead_code)]
 impl Default for Core {
     fn default() -> Self {
         Self { id: 0 }
     }
 }
 
+#[allow(dead_code)]
 impl Core {
     pub fn id(&self) -> u32 {
         self.id

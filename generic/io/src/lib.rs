@@ -15,22 +15,19 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 #![no_std]
-#![feature(allow_internal_unstable)]
 
-#[macro_use]
-pub mod framebuffer;
+pub mod vga;
 
-#[allow_internal_unstable(print_internals, format_args_nl)]
+// Re-export macros
+pub use vga::{_kprint, WRITER};
+
 #[macro_export]
 macro_rules! kprint {
-    ($($arg:tt)*) => ($crate::io::framebuffer::_kprint(format_args!($($arg)*)));
+    ($($arg:tt)*) => ($crate::vga::_kprint(format_args!($($arg)*)));
 }
 
-#[allow_internal_unstable(print_internals, format_args_nl)]
 #[macro_export]
 macro_rules! kprintln {
-    () => (kprint!("\n"));
-    ($($arg:tt)*) => ({
-    $crate::io::framebuffer::_kprint(format_args_nl!($($arg)*));
-    })
+    () => ($crate::kprint!("\n"));
+    ($($arg:tt)*) => ($crate::kprint!("{}\n", format_args!($($arg)*)));
 }

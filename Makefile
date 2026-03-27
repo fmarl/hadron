@@ -23,6 +23,17 @@ all: $(IMAGE_NAME).iso
 .PHONY: all-hdd
 all-hdd: $(IMAGE_NAME).hdd
 
+.PHONY: all-syndicate
+all-syndicate: $(IMAGE_NAME)-syndicate.img
+
+.PHONY: run-syndicate
+run-syndicate: $(IMAGE_NAME)-syndicate.img
+	qemu-system-x86_64 -m 2G -drive file=$(IMAGE_NAME)-syndicate.img,format=raw -serial file:serial.log
+
+.PHONY: run-syndicate-debug
+run-syndicate-debug: $(IMAGE_NAME)-syndicate.img
+	qemu-system-x86_64 -m 2G -drive file=$(IMAGE_NAME)-syndicate.img,format=raw -serial file:serial.log -no-reboot -no-shutdown -s -S
+
 .PHONY: run
 run: $(IMAGE_NAME).iso
 	qemu-system-x86_64 -M q35 -m 2G -cdrom $(IMAGE_NAME).iso -boot d
@@ -40,7 +51,7 @@ run-uefi: ovmf $(IMAGE_NAME).iso
 	qemu-system-x86_64 -M q35 -m 2G -bios ovmf/OVMF.fd -cdrom $(IMAGE_NAME).iso -boot d
 
 .PHONY: run-uefi-debug
-run-uefi: ovmf $(IMAGE_NAME).iso
+run-uefi-debug: ovmf $(IMAGE_NAME).iso
 	qemu-system-x86_64 -M q35 -m 2G -bios ovmf/OVMF.fd -cdrom $(IMAGE_NAME).iso -boot d -no-reboot -no-shutdown -s -S
 
 
@@ -60,9 +71,22 @@ limine:
 	git clone https://github.com/limine-bootloader/limine.git --branch=v5.x-branch-binary --depth=1
 	$(MAKE) -C limine CC="$(HOST_CC)"
 
+# Clone and build Syndicate bootloader
+syndicate:
+	@if [ ! -d "../syndicate-bootloader" ]; then \
+		echo "Cloning Syndicate bootloader..."; \
+		cd .. && git clone https://github.com/fmarl/syndicate syndicate-bootloader; \
+	fi
+	@echo "Building Syndicate bootloader..."
+	$(MAKE) -C ../syndicate-bootloader
+
 .PHONY: kernel
 kernel:
 	$(MAKE) -C kernel
+
+.PHONY: stage2
+stage2:
+	$(MAKE) -C boot
 
 $(IMAGE_NAME).iso: limine kernel
 	rm -rf iso_root
@@ -102,8 +126,30 @@ $(IMAGE_NAME).hdd: limine kernel
 
 .PHONY: clean
 clean:
-	rm -rf iso_root $(IMAGE_NAME).iso $(IMAGE_NAME).hdd
+	rm -rf iso_root $(IMAGE_NAME).iso $(IMAGE_NAME).hdd $(IMAGE_NAME)-syndicate.img serial.log
 	$(MAKE) -C kernel clean
+	$(MAKE) -C boot clean
+
+# Build bootable image with Syndicate bootloader
+$(IMAGE_NAME)-syndicate.img: syndicate kernel stage2
+	@echo "Creating Syndicate bootable image..."
+	rm -f $(IMAGE_NAME)-syndicate.img
+	# Create 64MB disk image
+	dd if=/dev/zero of=$(IMAGE_NAME)-syndicate.img bs=1M count=64
+	# Write Syndicate MBR bootloader
+	dd if=../syndicate-bootloader/loader.bin of=$(IMAGE_NAME)-syndicate.img conv=notrunc bs=512 count=1
+	# Create FAT32 partition (skip first 1MB for alignment)
+	parted -s $(IMAGE_NAME)-syndicate.img mklabel msdos
+	parted -s $(IMAGE_NAME)-syndicate.img mkpart primary fat32 1MiB 100%
+	parted -s $(IMAGE_NAME)-syndicate.img set 1 boot on
+	# Format partition as FAT32
+	@echo "Formatting FAT32 partition..."
+	mformat -i $(IMAGE_NAME)-syndicate.img@@1M -F -v "HADRON" ::
+	# Copy Stage 2 bootloader (KERNEL.BIN)
+	mcopy -i $(IMAGE_NAME)-syndicate.img@@1M boot/KERNEL.BIN ::KERNEL.BIN
+	# Copy Hadron kernel
+	mcopy -i $(IMAGE_NAME)-syndicate.img@@1M kernel/hadron.elf ::HADRON.ELF
+	@echo "Bootable image created: $(IMAGE_NAME)-syndicate.img"
 
 .PHONY: distclean
 distclean: clean
