@@ -5,3 +5,6 @@ authors = ["Florian Marrero Liestmann <f.m.liestmann@fx-ttr.de>"]
 edition = "2021"
 
 [dependencies]
+
+[dependencies.generic-io]
+path = "../io"

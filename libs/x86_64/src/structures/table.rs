@@ -20,6 +20,6 @@ use super::memory::VirtualAddress;
 #[derive(Clone, Copy)]
 #[repr(C, packed(2))]
 pub struct DescriptorTablePointer {
-    pub base: VirtualAddress,
     pub limit: u16,
+    pub base: VirtualAddress,
 }

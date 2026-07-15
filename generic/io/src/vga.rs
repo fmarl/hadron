@@ -172,3 +172,13 @@ pub fn _kprint(args: fmt::Arguments) {
     use core::fmt::Write;
     WRITER.lock().write_fmt(args).unwrap();
 }
+
+/// Print from exception or panic context. If the lock is held, the interrupted code was
+/// printing; waiting for it would deadlock on a single core, so the lock is broken instead.
+pub fn _ekprint(args: fmt::Arguments) {
+    use core::fmt::Write;
+    if WRITER.is_locked() {
+        unsafe { WRITER.force_unlock() };
+    }
+    WRITER.lock().write_fmt(args).unwrap();
+}

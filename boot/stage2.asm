@@ -5,9 +5,27 @@
 [BITS 16]
 [ORG 0x1000]
 
+; The kernel is linked at KERNEL_VIRT and loaded at KERNEL_PHYS
+KERNEL_VIRT equ 0xFFFFFFFF80000000
+KERNEL_PHYS equ 0x200000
+
+; Page tables live above 1MB, clear of the ELF buffer Syndicate fills at
+; 0x10000 - 0x90000 (KERNEL.BIN, max 512 KiB)
+PAGE_TABLES equ 0x100000
+
 ; Entry point from Syndicate Stage 1
 stage2_entry:
     cli
+
+    ; Syndicate enters at 0x0100:0x0000, but this code is linked at
+    ; 0x0000:0x1000 and expects flat zero segments
+    jmp 0x0000:.flat
+.flat:
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+    mov sp, 0x7C00
 
     ; Save drive number if passed
     mov [boot_drive], dl
@@ -24,9 +42,6 @@ stage2_entry:
 
     ; Check for Long Mode support
     call check_long_mode
-
-    ; Set up page tables for Long Mode
-    call setup_page_tables
 
     ; Load GDT
     lgdt [gdt_descriptor]
@@ -72,11 +87,11 @@ get_memory_map:
     mov di, 0x8000          ; Destination for memory map
     xor ebx, ebx            ; EBX = 0 to start
     xor bp, bp              ; Entry count
-    mov edx, 0x534D4150     ; 'SMAP' signature
 
 .loop:
     mov eax, 0xE820         ; INT 15h E820h function
     mov ecx, 24             ; Request 24 bytes
+    mov edx, 0x534D4150     ; 'SMAP', some BIOSes clobber EDX
     int 0x15
 
     jc .done                ; Carry set = end or error
@@ -135,44 +150,6 @@ check_long_mode:
     hlt
     jmp $
 
-; Setup identity-mapped page tables
-setup_page_tables:
-    ; Clear page table area (extended for 8MB)
-    mov edi, 0x70000
-    mov ecx, 0x9000 / 4  ; Increased from 0x5000
-    xor eax, eax
-    rep stosd
-
-    ; PML4T[0] -> PDPT
-    mov edi, 0x70000
-    mov dword [edi], 0x71003  ; Present, RW
-
-    ; PDPT[0] -> PDT
-    mov edi, 0x71000
-    mov dword [edi], 0x72003
-
-    ; PDT: Map 4 x 2MB = 8MB (using 2MB pages for simplicity)
-    mov edi, 0x72000
-    mov eax, 0x83  ; Present, RW, Page Size (2MB pages)
-    mov ecx, 4     ; 4 entries = 8MB
-.map_pdt:
-    stosd
-    mov dword [edi], 0  ; High 32 bits
-    add edi, 4
-    add eax, 0x200000   ; Next 2MB
-    loop .map_pdt
-
-    ; Also map higher half (for kernel at 0xFFFFFFFF80000000)
-    ; PML4T[511] -> PDPT
-    mov edi, 0x70000 + 511 * 8
-    mov dword [edi], 0x74003
-
-    ; PDPT[510] -> PDT (reuse same PDT for higher half)
-    mov edi, 0x74000 + 510 * 8
-    mov dword [edi], 0x72003  ; Reuse identity-mapped PDT
-
-    ret
-
 ;-----------------------------------------------------------
 ; 32-bit Protected Mode
 ;-----------------------------------------------------------
@@ -191,13 +168,22 @@ protected_mode_entry:
     mov esi, msg_protected
     call print_string_pm
 
-    ; Enable PAE
+    ; Enable SSE (the kernel is compiled with SSE): clear EM, set MP
+    mov eax, cr0
+    and eax, ~(1 << 2)
+    or eax, 1 << 1
+    mov cr0, eax
+
+    ; Enable PAE and SSE (OSFXSR, OSXMMEXCPT)
     mov eax, cr4
-    or eax, 1 << 5
+    or eax, (1 << 5) | (1 << 9) | (1 << 10)
     mov cr4, eax
 
+    ; Set up page tables for Long Mode
+    call setup_page_tables
+
     ; Load PML4
-    mov eax, 0x70000
+    mov eax, PAGE_TABLES
     mov cr3, eax
 
     ; Enable Long Mode
@@ -213,6 +199,51 @@ protected_mode_entry:
 
     ; Jump to 64-bit code
     jmp 0x18:long_mode_entry
+
+; Setup page tables at PAGE_TABLES:
+;   +0x0000 PML4, +0x1000 low PDPT, +0x2000 low PDT,
+;   +0x3000 higher half PDPT, +0x4000 higher half PDT
+setup_page_tables:
+    ; Clear page table area
+    mov edi, PAGE_TABLES
+    mov ecx, 0x5000 / 4
+    xor eax, eax
+    rep stosd
+
+    ; PML4T[0] -> PDPT
+    mov dword [PAGE_TABLES], (PAGE_TABLES + 0x1000) | 0x3  ; Present, RW
+
+    ; PDPT[0] -> PDT
+    mov dword [PAGE_TABLES + 0x1000], (PAGE_TABLES + 0x2000) | 0x3
+
+    ; PDT: Identity map 4 x 2MB = 8MB (using 2MB pages for simplicity)
+    mov edi, PAGE_TABLES + 0x2000
+    mov eax, 0x83  ; Present, RW, Page Size (2MB pages)
+    mov ecx, 4
+.map_pdt:
+    mov [edi], eax      ; High 32 bits are already zero
+    add edi, 8
+    add eax, 0x200000   ; Next 2MB
+    loop .map_pdt
+
+    ; Also map higher half (for kernel at 0xFFFFFFFF80000000)
+    ; PML4T[511] -> PDPT
+    mov dword [PAGE_TABLES + 511 * 8], (PAGE_TABLES + 0x3000) | 0x3
+
+    ; PDPT[510] -> higher half PDT
+    mov dword [PAGE_TABLES + 0x3000 + 510 * 8], (PAGE_TABLES + 0x4000) | 0x3
+
+    ; Higher half PDT: Map 0xFFFFFFFF80000000 -> KERNEL_PHYS (4 x 2MB)
+    mov edi, PAGE_TABLES + 0x4000
+    mov eax, KERNEL_PHYS | 0x83
+    mov ecx, 4
+.map_kernel:
+    mov [edi], eax
+    add edi, 8
+    add eax, 0x200000
+    loop .map_kernel
+
+    ret
 
 ; Print string in Protected Mode
 ; ESI = pointer to null-terminated string
@@ -346,15 +377,22 @@ load_elf_kernel:
     ; Get segment info
     mov rsi, [rdi + 0x08]  ; p_offset
     add rsi, rbx           ; Source address
-    mov r8,  [rdi + 0x10]  ; p_vaddr (destination)
+    mov r8,  [rdi + 0x10]  ; p_vaddr
     mov r9,  [rdi + 0x20]  ; p_filesz
     mov r10, [rdi + 0x28]  ; p_memsz
 
-    ; Bounds check: don't load beyond 16MB
+    ; Offset into the kernel image
+    mov rax, KERNEL_VIRT
+    sub r8, rax
+
+    ; Bounds check: the segment must lie within the identity mapped 8MB
     mov rax, r8
     add rax, r10
-    cmp rax, 0x1000000     ; 16MB limit
-    ja .next_segment       ; Skip if too large
+    cmp rax, 0x800000 - KERNEL_PHYS
+    ja .segment_too_large
+
+    ; Destination via the identity mapping
+    add r8, KERNEL_PHYS
 
     ; Copy file data (p_filesz bytes)
     push rcx
@@ -390,8 +428,13 @@ load_elf_kernel:
     pop rbx
     ret
 
+.segment_too_large:
+    mov rsi, msg_segment_too_large
+    jmp .fail
+
 .invalid_elf:
     mov rsi, msg_invalid_elf
+.fail:
     call print_string_64
     cli
     hlt
@@ -451,6 +494,7 @@ msg_long_mode:      db 'Long Mode OK', 0xA, 0
 msg_load_kernel:    db 'Parsing ELF...', 0xA, 0
 msg_jump_kernel:    db 'Jumping to kernel...', 0xA, 0
 msg_invalid_elf:    db 'ERROR: Invalid ELF kernel', 0xA, 0
+msg_segment_too_large: db 'ERROR: Kernel segment outside of the mapped 6MB', 0xA, 0
 
 kernel_entry:       dq 0
 vga_cursor_pm:      dd 0xB8000  ; Protected Mode VGA cursor

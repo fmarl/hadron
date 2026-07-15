@@ -19,13 +19,15 @@ use core::arch::asm;
 
 pub fn enable() {
     unsafe {
-        asm!("sti", options(nomem, nostack));
+        // No nomem: acts as a compiler barrier for the critical section
+        asm!("sti", options(nostack));
     }
 }
 
 pub fn disable() {
     unsafe {
-        asm!("cli", options(nomem, nostack));
+        // No nomem: acts as a compiler barrier for the critical section
+        asm!("cli", options(nostack));
     }
 }
 
@@ -33,6 +35,7 @@ pub fn disable() {
 #[inline]
 pub fn int3() {
     unsafe {
-        asm!("int3", options(nomem, nostack));
+        // No nomem: the handler may access memory
+        asm!("int3", options(nostack));
     }
 }

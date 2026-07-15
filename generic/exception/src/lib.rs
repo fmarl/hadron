@@ -18,9 +18,11 @@
 
 use core::arch::asm;
 use core::panic::PanicInfo;
+use generic_io::ekprintln;
 
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
+fn panic(info: &PanicInfo) -> ! {
+    ekprintln!("\n:: KERNEL PANIC ::\n{}", info);
     hcf()
 }
 

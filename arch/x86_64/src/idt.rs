@@ -17,14 +17,14 @@
 
 use core::arch::asm;
 use core::marker::PhantomData;
-use generic_io::kprintln;
+use generic_io::{ekprintln, kprintln};
 use lazy_static::lazy_static;
 use x86_64_hal::structures::{memory::VirtualAddress, table::DescriptorTablePointer};
 use x86_64_hal::types::paging::PageFaultErrorCode;
 
 #[allow(dead_code)]
-extern "x86-interrupt" fn default_handler(stack_frame: &mut InterruptStackFrame) {
-    kprintln!(
+extern "x86-interrupt" fn default_handler(stack_frame: InterruptStackFrame) {
+    ekprintln!(
         ":: KERNEL PANIC ::\nCalled default_handler. Stacktrace:\n{:#?}",
         stack_frame
     );
@@ -32,33 +32,33 @@ extern "x86-interrupt" fn default_handler(stack_frame: &mut InterruptStackFrame)
 
 // Exception Handlers
 
-extern "x86-interrupt" fn divide_error_handler(stack_frame: &mut InterruptStackFrame) {
-    kprintln!("\n:: EXCEPTION: DIVIDE BY ZERO ::");
-    kprintln!("Instruction Pointer: {:?}", stack_frame.value.instruction_pointer);
-    kprintln!("{:#?}", stack_frame);
+extern "x86-interrupt" fn divide_error_handler(stack_frame: InterruptStackFrame) {
+    ekprintln!("\n:: EXCEPTION: DIVIDE BY ZERO ::");
+    ekprintln!("Instruction Pointer: {:?}", stack_frame.value.instruction_pointer);
+    ekprintln!("{:#?}", stack_frame);
     generic_exception::hcf();
 }
 
-extern "x86-interrupt" fn debug_handler(stack_frame: &mut InterruptStackFrame) {
-    kprintln!("\n:: EXCEPTION: DEBUG ::");
-    kprintln!("{:#?}", stack_frame);
+extern "x86-interrupt" fn debug_handler(stack_frame: InterruptStackFrame) {
+    ekprintln!("\n:: EXCEPTION: DEBUG ::");
+    ekprintln!("{:#?}", stack_frame);
 }
 
-extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut InterruptStackFrame) {
-    kprintln!("\n:: EXCEPTION: BREAKPOINT ::");
-    kprintln!("Instruction Pointer: {:?}", stack_frame.value.instruction_pointer);
-    kprintln!("{:#?}", stack_frame);
+extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
+    ekprintln!("\n:: EXCEPTION: BREAKPOINT ::");
+    ekprintln!("Instruction Pointer: {:?}", stack_frame.value.instruction_pointer);
+    ekprintln!("{:#?}", stack_frame);
 }
 
-extern "x86-interrupt" fn invalid_opcode_handler(stack_frame: &mut InterruptStackFrame) {
-    kprintln!("\n:: EXCEPTION: INVALID OPCODE ::");
-    kprintln!("Instruction Pointer: {:?}", stack_frame.value.instruction_pointer);
-    kprintln!("{:#?}", stack_frame);
+extern "x86-interrupt" fn invalid_opcode_handler(stack_frame: InterruptStackFrame) {
+    ekprintln!("\n:: EXCEPTION: INVALID OPCODE ::");
+    ekprintln!("Instruction Pointer: {:?}", stack_frame.value.instruction_pointer);
+    ekprintln!("{:#?}", stack_frame);
     generic_exception::hcf();
 }
 
 extern "x86-interrupt" fn double_fault_handler(
-    stack_frame: &mut InterruptStackFrame,
+    stack_frame: InterruptStackFrame,
     error_code: u64,
 ) -> ! {
     panic!(
@@ -68,30 +68,37 @@ extern "x86-interrupt" fn double_fault_handler(
 }
 
 extern "x86-interrupt" fn general_protection_handler(
-    stack_frame: &mut InterruptStackFrame,
+    stack_frame: InterruptStackFrame,
     error_code: u64,
 ) {
-    kprintln!("\n:: EXCEPTION: GENERAL PROTECTION FAULT ::");
-    kprintln!("Error Code: {:#x}", error_code);
+    ekprintln!("\n:: EXCEPTION: GENERAL PROTECTION FAULT ::");
+    ekprintln!("Error Code: {:#x}", error_code);
     if error_code != 0 {
-        kprintln!("Segment Selector Index: {:#x}", error_code >> 3);
-        kprintln!("Table Indicator: {}", if error_code & 0x2 != 0 { "LDT" } else { "GDT" });
-        kprintln!("External: {}", error_code & 0x1 != 0);
+        ekprintln!("Segment Selector Index: {:#x}", error_code >> 3);
+        let table = if error_code & 0x2 != 0 {
+            "IDT"
+        } else if error_code & 0x4 != 0 {
+            "LDT"
+        } else {
+            "GDT"
+        };
+        ekprintln!("Table Indicator: {}", table);
+        ekprintln!("External: {}", error_code & 0x1 != 0);
     }
-    kprintln!("{:#?}", stack_frame);
+    ekprintln!("{:#?}", stack_frame);
     generic_exception::hcf();
 }
 
 extern "x86-interrupt" fn page_fault_handler(
-    stack_frame: &mut InterruptStackFrame,
+    stack_frame: InterruptStackFrame,
     error_code: PageFaultErrorCode,
 ) {
     use x86_64_hal::registers::control::Cr2;
 
-    kprintln!("\n:: EXCEPTION: PAGE FAULT ::");
-    kprintln!("Accessed Address: {:?}", Cr2::read());
-    kprintln!("Error Code: {:?}", error_code);
-    kprintln!(
+    ekprintln!("\n:: EXCEPTION: PAGE FAULT ::");
+    ekprintln!("Accessed Address: {:?}", Cr2::read());
+    ekprintln!("Error Code: {:?}", error_code);
+    ekprintln!(
         "  Protection: {}, Write: {}, User: {}, Malformed: {}, Instruction: {}",
         error_code.contains(PageFaultErrorCode::CAUSED_BY_PROTECTION_VIOLATION),
         error_code.contains(PageFaultErrorCode::CAUSED_BY_WRITE),
@@ -99,37 +106,37 @@ extern "x86-interrupt" fn page_fault_handler(
         error_code.contains(PageFaultErrorCode::CAUSED_BY_MALFORMED_TABLE),
         error_code.contains(PageFaultErrorCode::CAUSED_BY_INSTRUCTION_FETCH)
     );
-    kprintln!("{:#?}", stack_frame);
+    ekprintln!("{:#?}", stack_frame);
     generic_exception::hcf();
 }
 
 extern "x86-interrupt" fn stack_fault_handler(
-    stack_frame: &mut InterruptStackFrame,
+    stack_frame: InterruptStackFrame,
     error_code: u64,
 ) {
-    kprintln!("\n:: EXCEPTION: STACK FAULT ::");
-    kprintln!("Error Code: {:#x}", error_code);
-    kprintln!("{:#?}", stack_frame);
+    ekprintln!("\n:: EXCEPTION: STACK FAULT ::");
+    ekprintln!("Error Code: {:#x}", error_code);
+    ekprintln!("{:#?}", stack_frame);
     generic_exception::hcf();
 }
 
 extern "x86-interrupt" fn segment_not_present_handler(
-    stack_frame: &mut InterruptStackFrame,
+    stack_frame: InterruptStackFrame,
     error_code: u64,
 ) {
-    kprintln!("\n:: EXCEPTION: SEGMENT NOT PRESENT ::");
-    kprintln!("Segment Selector: {:#x}", error_code);
-    kprintln!("{:#?}", stack_frame);
+    ekprintln!("\n:: EXCEPTION: SEGMENT NOT PRESENT ::");
+    ekprintln!("Segment Selector: {:#x}", error_code);
+    ekprintln!("{:#?}", stack_frame);
     generic_exception::hcf();
 }
 
-pub type InterruptHandlerFunction = extern "x86-interrupt" fn(&mut InterruptStackFrame);
+pub type InterruptHandlerFunction = extern "x86-interrupt" fn(InterruptStackFrame);
 pub type InterruptHandlerFunctionWithErrorCode =
-    extern "x86-interrupt" fn(&mut InterruptStackFrame, error_code: u64);
+    extern "x86-interrupt" fn(InterruptStackFrame, error_code: u64);
 pub type DivergingInterruptHandlerFunctionWithErrorCode =
-    extern "x86-interrupt" fn(&mut InterruptStackFrame, error_code: u64) -> !;
+    extern "x86-interrupt" fn(InterruptStackFrame, error_code: u64) -> !;
 pub type PageFaultInterruptHandlerFunction =
-    extern "x86-interrupt" fn(&mut InterruptStackFrame, error_code: PageFaultErrorCode);
+    extern "x86-interrupt" fn(InterruptStackFrame, error_code: PageFaultErrorCode);
 
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
@@ -231,8 +238,9 @@ pub struct InterruptDescriptorTable {
     /// The error code 0x0 is pushed on the stack of the double-fault handler.
     pub double_fault: InterruptDescriptorTableEntry<DivergingInterruptHandlerFunctionWithErrorCode>,
 
-    // Interrupt 0x9: Reserved
-    //
+    /// Interrupt 0x9: Reserved (Coprocessor Segment Overrun on older CPUs)
+    reserved_0x09: InterruptDescriptorTableEntry<InterruptHandlerFunction>,
+
     /// Interrupt 0xA: Fault
     /// Indicates that there was an error related to a TSS. Such an error might be detected during a task switch or during
     /// the execution of instructions that use information from a TSS. Table 6-6 shows the conditions that cause an invalid
@@ -294,8 +302,9 @@ pub struct InterruptDescriptorTable {
     /// The processor provides the page-fault handler with two items of information to aid in diagosing the exception and recovering from it.
     pub page_fault: InterruptDescriptorTableEntry<PageFaultInterruptHandlerFunction>,
 
-    // Interrupt 0xF: Reserved
-    //
+    /// Interrupt 0xF: Reserved
+    reserved_0x0f: InterruptDescriptorTableEntry<InterruptHandlerFunction>,
+
     /// Interrupt 0x10: Fault
     /// Indicates that the x87 FPU has detected a floating-point error. The NE flag in the register CR0 must be set for an
     /// interrupt 16 (floating-point error exception) to be generated. (See Section 2.5, “Control Registers,” for a detailed
@@ -422,11 +431,13 @@ impl InterruptDescriptorTable {
             invalid_opcode: InterruptDescriptorTableEntry::null(),
             device_not_available: InterruptDescriptorTableEntry::null(),
             double_fault: InterruptDescriptorTableEntry::null(),
+            reserved_0x09: InterruptDescriptorTableEntry::null(),
             invalid_tss: InterruptDescriptorTableEntry::null(),
             segment_not_present: InterruptDescriptorTableEntry::null(),
             stack_fault: InterruptDescriptorTableEntry::null(),
             general_protection: InterruptDescriptorTableEntry::null(),
             page_fault: InterruptDescriptorTableEntry::null(),
+            reserved_0x0f: InterruptDescriptorTableEntry::null(),
             x87_fpu_floating_point: InterruptDescriptorTableEntry::null(),
             alignment_check: InterruptDescriptorTableEntry::null(),
             machine_check: InterruptDescriptorTableEntry::null(),
@@ -541,8 +552,11 @@ impl InterruptDescriptorTableEntryOptions {
     }
 
     #[inline]
+    /// `index` is the index into the TSS interrupt stack table. The hardware IST field
+    /// is 1-based (0 means "no stack switch"), so `index + 1` is stored.
     pub fn set_stack_index(&mut self, index: u16) -> &mut Self {
-        self.0 = (self.0 & 0xFFF8) | (index & 0x7);
+        assert!(index < 7, "The interrupt stack table has only 7 entries.");
+        self.0 = (self.0 & 0xFFF8) | (index + 1);
         self
     }
 }

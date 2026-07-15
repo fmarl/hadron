@@ -90,7 +90,8 @@ pub unsafe fn u_write(flags: RFlags) {
         asm!(
             "push {}; popfq",
             in(reg) new_flags,
-            options(nomem, preserves_flags)
+            // No nomem/preserves_flags: popfq changes RFLAGS (incl. IF), and memory
+            // accesses must not be moved across a change of the interrupt flag.
         );
     }
 }
@@ -103,7 +104,8 @@ fn u_read() -> u64 {
         asm!(
             "pushfq; pop {}",
             out(reg) result,
-            options(nomem, preserves_flags)
+            // No nomem/preserves_flags: popfq changes RFLAGS (incl. IF), and memory
+            // accesses must not be moved across a change of the interrupt flag.
         );
     }
 

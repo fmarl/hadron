@@ -19,7 +19,7 @@
 pub mod vga;
 
 // Re-export macros
-pub use vga::{_kprint, WRITER};
+pub use vga::{_ekprint, _kprint, WRITER};
 
 #[macro_export]
 macro_rules! kprint {
@@ -30,4 +30,16 @@ macro_rules! kprint {
 macro_rules! kprintln {
     () => ($crate::kprint!("\n"));
     ($($arg:tt)*) => ($crate::kprint!("{}\n", format_args!($($arg)*)));
+}
+
+/// Like `kprint!`, but usable from exception handlers and panics (see `vga::_ekprint`).
+#[macro_export]
+macro_rules! ekprint {
+    ($($arg:tt)*) => ($crate::vga::_ekprint(format_args!($($arg)*)));
+}
+
+#[macro_export]
+macro_rules! ekprintln {
+    () => ($crate::ekprint!("\n"));
+    ($($arg:tt)*) => ($crate::ekprint!("{}\n", format_args!($($arg)*)));
 }
