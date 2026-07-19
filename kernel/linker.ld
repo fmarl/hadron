@@ -12,8 +12,8 @@ PHDRS
 
 SECTIONS
 {
-    /* We wanna be placed in the topmost 2GiB of the address space, for optimisations */
-    /* and because that is what the Limine spec mandates. */
+    /* We wanna be placed in the topmost 2GiB of the address space, for optimisations. */
+    /* Stage 2 maps this region to KERNEL_PHYS (see boot/stage2.asm). */
     /* Any address in this region will do, but often 0xffffffff80000000 is chosen as */
     /* that is the beginning of the region. */
     . = 0xffffffff80000000;

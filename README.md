@@ -40,23 +40,26 @@ I'll try to reuse the FreeBSD Userland.
 Later I plan to port the kernel to RISC-V.
 
 ## Dependencies
-If you use the Nix Package Manager, there is a flake.nix in the root directory. 
+If you use Guix, `guix shell -m manifest.scm` provides everything, e.g. `guix shell -m manifest.scm -- make run`.
 Else you need to have the following packages installed:
 ```
-rustc
+rustc (nightly, with rust-src)
+nasm
+mtools
+sfdisk
 qemu
-parted
-xorriso
+git
 ```
 and a C-compiler of your choice.
 
 ## Build
 
-The build of the kernel works via the included Makefile:
+Hadron boots via the [Syndicate](https://github.com/fmarl/syndicate) BIOS bootloader,
+which is cloned next to this repository. The bootable disk image is built via the included Makefile:
 ```
 make
 ```
-and you can run the kernel for example via UEFI:
+and you can run it in QEMU:
 ```
-make run-uefi
+make run
 ```

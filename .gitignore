@@ -4,9 +4,9 @@
 debug/
 target/
 build/
-ovmf/
-limine/
-hadron.iso
+hadron.img
+boot/KERNEL.BIN
+serial.log
 
 # Remove Cargo.lock from gitignore if creating an executable, leave it for libraries
 # More information here https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html
