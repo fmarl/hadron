@@ -8,6 +8,18 @@ I am using this project mainly to learn more about os development and L4 microke
 ## Features
 At this moment the kernel doesn't have any features. I'm still in the phase of implementing the minimum features for a working x86_64 kernel.
 
+## Structure
+The layout follows seL4: one kernel crate, split by how hardware specific the code is.
+```
+boot/stage2.asm       Stage 2 bootloader, loaded by Syndicate
+kernel/src/
+  kernel/             architecture independent core (boot, panic)
+  machine/            console output (kprint!)
+  arch/x86_64/        CPU: GDT, IDT, registers, instructions
+  plat/pc99/          PC hardware: VGA text mode, COM1
+```
+Like seL4, the kernel has no heap. Userspace servers will be separate crates.
+
 ## Roadmap
 
 ### Basic

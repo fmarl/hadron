@@ -4,11 +4,6 @@ resolver = "2"
 
 members = [
     "kernel",
-    "libs/kstructs",
-    "libs/x86_64",
-    "arch/x86_64",
-    "generic/io",
-    "generic/exception"
 ]
 
 [profile.dev]
