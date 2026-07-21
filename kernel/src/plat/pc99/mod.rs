@@ -15,13 +15,17 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-//! PC99 platform: the standard PC hardware around an x86_64 CPU.
+//! PC99 platform: the standard PC hardware around an `x86_64` CPU.
+
+// Talking to the hardware needs unsafe; the generic kernel code must not use it
+#![allow(unsafe_code)]
 
 pub mod serial;
 pub mod vga;
 
-/// Prepare the kernel console.
+/// Prepare the kernel consoles.
 pub fn init_console() {
+    serial::init();
     vga::WRITER.lock().clear_screen();
 }
 

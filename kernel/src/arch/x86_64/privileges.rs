@@ -1,6 +1,6 @@
 /*
  * This file is part of the hadron distribution (https://github.com/fxttr/hadron).
- * Copyright (c) 2023 Florian Marrero Liestmann.
+ * Copyright (c) 2025 Florian Marrero Liestmann.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  */
 
 /// Represents a protection ring level.
-#[derive(Copy, Clone, PartialEq, PartialOrd, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Eq, Hash)]
 #[repr(u8)]
 pub enum PLevel {
     Ring0 = 0,
@@ -26,14 +26,31 @@ pub enum PLevel {
 }
 
 impl PLevel {
+    /// Creates a privilege level from the lowest two bits of `value`.
     #[inline]
-    pub const fn from_u16(value: u16) -> PLevel {
-        match value {
-            0 => PLevel::Ring0,
-            1 => PLevel::Ring1,
-            2 => PLevel::Ring2,
-            3 => PLevel::Ring3,
-            _ => core::panic!("invalid PLevel"),
+    pub const fn from_bits_truncate(value: u16) -> Self {
+        match value & 0b11 {
+            0 => Self::Ring0,
+            1 => Self::Ring1,
+            2 => Self::Ring2,
+            _ => Self::Ring3,
+        }
+    }
+}
+
+/// Error for a value that is not a privilege level.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InvalidPLevel(pub u16);
+
+impl TryFrom<u16> for PLevel {
+    type Error = InvalidPLevel;
+
+    #[inline]
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        if value <= 3 {
+            Ok(Self::from_bits_truncate(value))
+        } else {
+            Err(InvalidPLevel(value))
         }
     }
 }

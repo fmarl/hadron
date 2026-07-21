@@ -1,0 +1,52 @@
+[graph]
+all-features = true
+no-default-features = false
+
+[advisories]
+ignore = [
+    { id = "RUSTSEC-2023-0071", reason = "no fix available; not reachable via our signature-verification-only usage" },
+]
+unmaintained = "all"
+unsound = "all"
+yanked = "deny"
+maximum-db-staleness = "P30D"
+unused-ignored-advisory = "deny"
+
+[licenses]
+private = { ignore = true }
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-1-Clause",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "0BSD",
+    "Zlib",
+    "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.95
+unused-allowed-license = "deny"
+unused-license-exception = "deny"
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+external-default-features = "allow"
+workspace-default-features = "allow"
+
+[bans.build]
+executables = "deny"
+interpreted = "allow"
+
+[bans.std-replacements]
+scope = "workspace"
+level = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
+unused-allowed-source = "deny"

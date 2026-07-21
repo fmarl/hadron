@@ -1,6 +1,6 @@
 /*
  * This file is part of the hadron distribution (https://github.com/fxttr/hadron).
- * Copyright (c) 2023 Florian Marrero Liestmann.
+ * Copyright (c) 2025 Florian Marrero Liestmann.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,19 +16,65 @@
  */
 
 use super::privileges::PLevel;
+use super::{registers::Msr, structures::memory::VirtualAddress};
 use bit_field::BitField;
 use bitflags::bitflags;
 use core::{arch::asm, mem::size_of};
-use super::{registers::Msr, structures::memory::VirtualAddress};
 
 pub enum Descriptor {
     UserSegment(u64),
     SystemSegment(u64, u64),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// An index into the GDT plus the requested privilege level.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
-pub struct SegmentSelector(pub u16);
+pub struct SegmentSelector(u16);
+
+impl SegmentSelector {
+    pub const NULL: Self = Self::new(0, PLevel::Ring0);
+
+    #[inline]
+    pub const fn new(index: u16, privilege_level: PLevel) -> Self {
+        Self((index << 3) | (privilege_level as u16))
+    }
+
+    /// The raw selector value as loaded into a segment register.
+    #[inline]
+    pub const fn bits(self) -> u16 {
+        self.0
+    }
+
+    #[inline]
+    pub const fn index(self) -> u16 {
+        self.0 >> 3
+    }
+
+    /// The requested privilege level (RPL).
+    #[inline]
+    pub fn privilege_level(self) -> PLevel {
+        PLevel::from_bits_truncate(self.0.get_bits(0..2))
+    }
+
+    #[inline]
+    pub fn set_privilege_level(&mut self, privilege_level: PLevel) {
+        self.0.set_bits(0..2, privilege_level as u16);
+    }
+}
+
+pub trait Segment32 {
+    fn get_reg() -> SegmentSelector;
+
+    /// # Safety
+    /// `sel` must select a valid descriptor of the right type in the loaded GDT.
+    unsafe fn set_reg(sel: SegmentSelector);
+}
+
+pub trait Segment64: Segment32 {
+    const BASE: Msr;
+    fn read_base() -> VirtualAddress;
+    fn write_base(base: VirtualAddress);
+}
 
 pub struct CodeSegment;
 
@@ -36,6 +82,7 @@ impl Segment32 for CodeSegment {
     fn get_reg() -> SegmentSelector {
         let result: u16;
 
+        // SAFETY: Reading CS has no side effects.
         unsafe {
             asm!(
                 "mov {0:x}, cs",
@@ -47,7 +94,9 @@ impl Segment32 for CodeSegment {
         SegmentSelector(result)
     }
 
-    fn set_reg(sel: SegmentSelector) {
+    unsafe fn set_reg(sel: SegmentSelector) {
+        // SAFETY: CS can only be reloaded by a far jump or return, here to the next
+        // instruction. The caller guarantees that `sel` is a valid code segment.
         unsafe {
             asm!(
                 "push {sel}",
@@ -63,41 +112,24 @@ impl Segment32 for CodeSegment {
     }
 }
 
-#[allow(dead_code)]
 pub struct StackSegment;
 
-#[allow(dead_code)]
 pub struct DataSegment;
 
-#[allow(dead_code)]
 pub struct FSegment;
 
-#[allow(dead_code)]
 pub struct GSegment;
 
-impl SegmentSelector {
-    pub const NULL: Self = Self::new(0, PLevel::Ring0);
-
-    #[inline]
-    pub const fn new(index: u16, privilege_level: PLevel) -> Self {
-        Self(index << 3 | (privilege_level as u16))
-    }
-
-    #[inline]
-    pub fn index(self) -> u16 {
-        self.0 >> 3
-    }
-
-    // Requested Privilege Level ()
-    #[inline]
-    pub fn privilege_level(self) -> PLevel {
-        PLevel::from_u16(self.0.get_bits(0..2))
-    }
-
-    /// Set the privilege level for this Segment selector.
-    #[inline]
-    pub fn set_privilege_level(&mut self, privilege_level: PLevel) {
-        self.0.set_bits(0..2, privilege_level as u16);
+/// Loads the task register.
+///
+/// # Safety
+/// `sel` must select a valid, not busy TSS descriptor in the loaded GDT, and the TSS must
+/// stay valid for as long as it is loaded.
+#[inline]
+pub unsafe fn load_tss(sel: SegmentSelector) {
+    // SAFETY: Guaranteed by the caller.
+    unsafe {
+        asm!("ltr {0:x}", in(reg) sel.0, options(nostack, preserves_flags));
     }
 }
 
@@ -123,7 +155,6 @@ bitflags! {
     }
 }
 
-#[allow(dead_code)]
 impl DescriptorFlags {
     const COMMON: Self = Self::from_bits_truncate(
         Self::USER_SEGMENT.bits()
@@ -158,46 +189,51 @@ impl DescriptorFlags {
 
 impl Descriptor {
     #[inline]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "the DPL is masked to 2 bits"
+    )]
     pub const fn dpl(self) -> PLevel {
         let value_low = match self {
-            Descriptor::UserSegment(v) => v,
-            Descriptor::SystemSegment(v, _) => v,
+            Self::UserSegment(v) | Self::SystemSegment(v, _) => v,
         };
         let dpl = (value_low & DescriptorFlags::DPL_RING_3.bits()) >> 45;
 
-        PLevel::from_u16(dpl as u16)
+        PLevel::from_bits_truncate(dpl as u16)
     }
 
     #[inline]
-    pub const fn kernel_code_segment() -> Descriptor {
-        Descriptor::UserSegment(DescriptorFlags::KERNEL_CODE64.bits())
+    pub const fn kernel_code_segment() -> Self {
+        Self::UserSegment(DescriptorFlags::KERNEL_CODE64.bits())
     }
 
     #[inline]
-    pub const fn kernel_data_segment() -> Descriptor {
-        Descriptor::UserSegment(DescriptorFlags::KERNEL_DATA.bits())
+    pub const fn kernel_data_segment() -> Self {
+        Self::UserSegment(DescriptorFlags::KERNEL_DATA.bits())
     }
 
     #[inline]
-    pub const fn user_data_segment() -> Descriptor {
-        Descriptor::UserSegment(DescriptorFlags::USER_DATA.bits())
+    pub const fn user_data_segment() -> Self {
+        Self::UserSegment(DescriptorFlags::USER_DATA.bits())
     }
 
     /// Creates a segment descriptor for a 64-bit ring 3 code segment. Suitable
     /// for use with `sysret` or `sysexit`.
     #[inline]
-    pub const fn user_code_segment() -> Descriptor {
-        Descriptor::UserSegment(DescriptorFlags::USER_CODE64.bits())
+    pub const fn user_code_segment() -> Self {
+        Self::UserSegment(DescriptorFlags::USER_CODE64.bits())
     }
 
     #[inline]
-    pub fn tss_segment(tss: &'static TaskStateSegment) -> Descriptor {
+    pub fn tss_segment(tss: &'static TaskStateSegment) -> Self {
         // SAFETY: The pointer is derived from a &'static reference, which ensures its validity.
         unsafe { Self::tss_segment_unchecked(tss) }
     }
 
     #[inline]
-    pub unsafe fn tss_segment_unchecked(tss: *const TaskStateSegment) -> Descriptor {
+    /// # Safety
+    /// `tss` must point to a TSS that stays valid for as long as the descriptor is in use.
+    pub unsafe fn tss_segment_unchecked(tss: *const TaskStateSegment) -> Self {
         use self::DescriptorFlags as Flags;
 
         let ptr = tss as u64;
@@ -214,7 +250,7 @@ impl Descriptor {
         let mut high = 0;
         high.set_bits(0..32, ptr.get_bits(32..64));
 
-        Descriptor::SystemSegment(low, high)
+        Self::SystemSegment(low, high)
     }
 }
 
@@ -230,28 +266,16 @@ pub struct TaskStateSegment {
 }
 
 impl TaskStateSegment {
-    pub fn new() -> Self {
+    #[expect(clippy::cast_possible_truncation, reason = "the TSS is 104 bytes")]
+    pub const fn new() -> Self {
         Self {
             r1: 0,
-            privilege_stack_table: [VirtualAddress::default(); 3],
+            privilege_stack_table: [VirtualAddress::new(0); 3],
             r2: 0,
-            interrupt_stack_table: [VirtualAddress::default(); 7],
+            interrupt_stack_table: [VirtualAddress::new(0); 7],
             r3: 0,
             r4: 0,
-            iomap_base: size_of::<TaskStateSegment>() as u16,
+            iomap_base: size_of::<Self>() as u16,
         }
     }
-}
-
-#[allow(dead_code)]
-pub trait Segment32 {
-    fn get_reg() -> SegmentSelector;
-    fn set_reg(sel: SegmentSelector);
-}
-
-#[allow(dead_code)]
-pub trait Segment64: Segment32 {
-    const BASE: Msr;
-    fn read_base() -> VirtualAddress;
-    fn write_base(base: VirtualAddress);
 }

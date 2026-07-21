@@ -20,7 +20,7 @@
 use core::fmt;
 
 macro_rules! kprint {
-    ($($arg:tt)*) => ($crate::machine::io::_kprint(format_args!($($arg)*)));
+    ($($arg:tt)*) => ($crate::machine::io::print(format_args!($($arg)*)));
 }
 
 macro_rules! kprintln {
@@ -28,9 +28,9 @@ macro_rules! kprintln {
     ($($arg:tt)*) => (kprint!("{}\n", format_args!($($arg)*)));
 }
 
-/// Like `kprint!`, but usable from exception handlers and panics (see `_ekprint`).
+/// Like `kprint!`, but usable from exception handlers and panics (see `emergency_print`).
 macro_rules! ekprint {
-    ($($arg:tt)*) => ($crate::machine::io::_ekprint(format_args!($($arg)*)));
+    ($($arg:tt)*) => ($crate::machine::io::emergency_print(format_args!($($arg)*)));
 }
 
 macro_rules! ekprintln {
@@ -38,12 +38,12 @@ macro_rules! ekprintln {
     ($($arg:tt)*) => (ekprint!("{}\n", format_args!($($arg)*)));
 }
 
-pub fn _kprint(args: fmt::Arguments) {
+pub fn print(args: fmt::Arguments) {
     crate::plat::console_print(args, false);
 }
 
 /// Print from exception or panic context. If a console lock is held, the interrupted code
 /// was printing; waiting for it would deadlock on a single core, so the lock is broken instead.
-pub fn _ekprint(args: fmt::Arguments) {
+pub fn emergency_print(args: fmt::Arguments) {
     crate::plat::console_print(args, true);
 }

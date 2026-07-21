@@ -1,6 +1,6 @@
 /*
  * This file is part of the hadron distribution (https://github.com/fxttr/hadron).
- * Copyright (c) 2023 Florian Marrero Liestmann.
+ * Copyright (c) 2025 Florian Marrero Liestmann.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,80 +15,99 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+use core::arch::asm;
 use core::mem::size_of;
 
-use super::segmentation::{Descriptor, SegmentSelector, Segment32, TaskStateSegment};
+use spin::Once;
+
+use super::segmentation::{
+    CodeSegment, Descriptor, Segment32, SegmentSelector, TaskStateSegment, load_tss,
+};
 use super::structures::{memory::VirtualAddress, table::DescriptorTablePointer};
 
-use lazy_static::lazy_static;
-
 pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
-pub const STACK_SIZE: usize = 4096 * 5;
+const STACK_SIZE: usize = 4096 * 5;
 
-lazy_static! {
-    static ref TASK_STATE_SEGMENT: TaskStateSegment = {
+#[repr(align(16))]
+struct Stack([u8; STACK_SIZE]);
+
+/// Only ever used by the CPU, through the TSS.
+static mut DOUBLE_FAULT_STACK: Stack = Stack([0; STACK_SIZE]);
+
+static TSS: Once<TaskStateSegment> = Once::new();
+static GDT: Once<Gdt> = Once::new();
+
+/// The kernel GDT together with the selectors of its entries.
+struct Gdt {
+    table: GlobalDescriptorTable,
+    selectors: Selectors,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Selectors {
+    pub kernel_code: SegmentSelector,
+    pub tss: SegmentSelector,
+}
+
+fn tss() -> &'static TaskStateSegment {
+    TSS.call_once(|| {
         let mut tss = TaskStateSegment::new();
 
-        tss.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX as usize] = {
-            static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
-            let stack_start = VirtualAddress::from_ptr(&raw const STACK);
-            let stack_end = stack_start + STACK_SIZE;
-            stack_end
-        };
+        // The stack grows down, so the IST entry points at its end
+        let stack_start = VirtualAddress::from_ptr(&raw const DOUBLE_FAULT_STACK);
+        tss.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX as usize] = stack_start + STACK_SIZE;
 
         tss
-    };
+    })
 }
 
-lazy_static! {
-    pub static ref GLOBAL_DESCRIPTOR_TABLE: (GlobalDescriptorTable, SegmentSelectors) = {
-        let mut global_descriptor_table = GlobalDescriptorTable::new();
-        let code_segment_selector = global_descriptor_table.add(Descriptor::kernel_code_segment());
-        let tss_segment_selector =
-            global_descriptor_table.add(Descriptor::tss_segment(&TASK_STATE_SEGMENT));
-
-        (
-            global_descriptor_table,
-            SegmentSelectors {
-                code_segment_selector,
-                tss_segment_selector,
-            },
-        )
-    };
-}
-
+/// Loads the kernel GDT and reloads CS and the task register.
 pub fn init() {
-    use super::segmentation::CodeSegment;
-    use core::arch::asm;
+    let gdt = GDT.call_once(|| {
+        let mut table = GlobalDescriptorTable::new();
+        let kernel_code = table.add(Descriptor::kernel_code_segment());
+        let tss = table.add(Descriptor::tss_segment(tss()));
 
-    GLOBAL_DESCRIPTOR_TABLE.0.init();
+        Gdt {
+            table,
+            selectors: Selectors { kernel_code, tss },
+        }
+    });
+
+    gdt.table.load();
 
     #[cfg(debug_assertions)]
     kprintln!(
-        "GDT intialized.\nCS: {}\nTSS: {}",
-        GLOBAL_DESCRIPTOR_TABLE.1.code_segment_selector.0,
-        GLOBAL_DESCRIPTOR_TABLE.1.tss_segment_selector.0
+        "GDT initialized.\nCS: {}\nTSS: {}",
+        gdt.selectors.kernel_code.bits(),
+        gdt.selectors.tss.bits()
     );
 
+    // SAFETY: Both selectors were created by adding their descriptors to the GDT that was
+    // just loaded, and the TSS is 'static.
     unsafe {
-        CodeSegment::set_reg(GLOBAL_DESCRIPTOR_TABLE.1.code_segment_selector);
-
-        asm!(
-            "ltr {0:x}",
-            in(reg) GLOBAL_DESCRIPTOR_TABLE.1.tss_segment_selector.0,
-            options(nostack, preserves_flags)
-        );
+        CodeSegment::set_reg(gdt.selectors.kernel_code);
+        load_tss(gdt.selectors.tss);
     }
 }
 
-pub struct SegmentSelectors {
-    pub code_segment_selector: SegmentSelector,
-    pub tss_segment_selector: SegmentSelector,
+/// The selectors of the kernel GDT.
+///
+/// # Panics
+/// If called before `init`.
+pub fn selectors() -> &'static Selectors {
+    &GDT.get().expect("GDT is not initialized").selectors
 }
 
 pub struct GlobalDescriptorTable {
     table: [u64; 8],
     len: usize,
+}
+
+impl Default for GlobalDescriptorTable {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl GlobalDescriptorTable {
@@ -104,24 +123,31 @@ impl GlobalDescriptorTable {
         &self.table[..self.len]
     }
 
+    /// Creates a GDT from raw descriptor values.
+    ///
+    /// # Safety
+    /// The values must be valid descriptors, as `load` makes the CPU use them.
+    ///
+    /// # Panics
+    /// If `slice` has more than 8 entries.
     #[inline]
-    pub const unsafe fn u_from_raw_slice(slice: &[u64]) -> GlobalDescriptorTable {
-        let len: usize = slice.len();
-        let mut table: [u64; 8] = [0; 8];
-        let mut i: usize = 0;
+    pub const unsafe fn from_raw_slice(slice: &[u64]) -> Self {
+        let len = slice.len();
+        let mut table = [0; 8];
+        let mut i = 0;
 
         assert!(len <= 8, "A GDT cannot be longer than 8 elements.");
 
-        while len > i {
+        while i < len {
             table[i] = slice[i];
             i += 1;
         }
 
-        GlobalDescriptorTable { table, len }
+        Self { table, len }
     }
 
     #[inline]
-    fn push(&mut self, value: u64) -> usize {
+    const fn push(&mut self, value: u64) -> usize {
         let i = self.len;
 
         self.table[i] = value;
@@ -130,13 +156,22 @@ impl GlobalDescriptorTable {
         i
     }
 
+    /// Adds a descriptor and returns its selector.
+    ///
+    /// # Panics
+    /// If the GDT is full.
     #[inline]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "the GDT has at most 8 entries"
+    )]
     pub fn add(&mut self, entry: Descriptor) -> SegmentSelector {
         let i = match entry {
             Descriptor::SystemSegment(low, high) => {
-                if self.len > self.table.len().saturating_sub(2) {
-                    panic!("Not enough space in GDT for holding a SystemSegment.")
-                }
+                assert!(
+                    self.len + 2 <= self.table.len(),
+                    "Not enough space in GDT for holding a SystemSegment."
+                );
 
                 let i = self.push(low);
                 self.push(high);
@@ -145,9 +180,10 @@ impl GlobalDescriptorTable {
             }
 
             Descriptor::UserSegment(value) => {
-                if self.len > self.table.len().saturating_sub(1) {
-                    panic!("Not enough space in GDT for holding a UserSegment.")
-                }
+                assert!(
+                    self.len < self.table.len(),
+                    "Not enough space in GDT for holding a UserSegment."
+                );
 
                 self.push(value)
             }
@@ -156,10 +192,13 @@ impl GlobalDescriptorTable {
         SegmentSelector::new(i as u16, entry.dpl())
     }
 
+    /// Loads this GDT. Segment registers keep their old values until they are reloaded.
     #[inline]
-    pub fn init(&self) {
+    pub fn load(&'static self) {
+        // SAFETY: The table lives forever and only holds descriptors created by `add` or
+        // promised to be valid by the caller of `from_raw_slice`.
         unsafe {
-            core::arch::asm!(
+            asm!(
                 "lgdt [{}]",
                 in(reg) &self.as_descriptor_table_pointer(),
                 options(readonly, nostack, preserves_flags)
@@ -168,9 +207,13 @@ impl GlobalDescriptorTable {
     }
 
     #[inline]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "the GDT has at most 8 entries"
+    )]
     fn as_descriptor_table_pointer(&self) -> DescriptorTablePointer {
         DescriptorTablePointer {
-            base: VirtualAddress::new(self.table.as_ptr() as u64),
+            base: VirtualAddress::from_ptr(self.table.as_ptr()),
             limit: (self.len * size_of::<u64>() - 1) as u16,
         }
     }

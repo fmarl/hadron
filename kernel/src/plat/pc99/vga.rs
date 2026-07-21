@@ -17,14 +17,13 @@
 
 use core::fmt;
 use core::ptr::{read_volatile, write_volatile};
-use lazy_static::lazy_static;
 use spin::Mutex;
 
 const VGA_BUFFER: usize = 0xB8000;
 const VGA_WIDTH: usize = 80;
 const VGA_HEIGHT: usize = 25;
 
-#[allow(dead_code)]
+#[expect(dead_code, reason = "the full VGA palette is kept for later use")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Color {
@@ -51,16 +50,32 @@ pub enum Color {
 struct ColorCode(u8);
 
 impl ColorCode {
-    fn new(foreground: Color, background: Color) -> ColorCode {
-        ColorCode((background as u8) << 4 | (foreground as u8))
+    const fn new(foreground: Color, background: Color) -> Self {
+        Self(((background as u8) << 4) | (foreground as u8))
     }
 }
 
+/// One cell of the text buffer. Accessed as a single `u16`, so the hardware always sees
+/// character and color together.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(C)]
+#[repr(C, align(2))]
 struct ScreenChar {
     ascii_character: u8,
     color_code: ColorCode,
+}
+
+impl ScreenChar {
+    const fn to_bits(self) -> u16 {
+        u16::from_le_bytes([self.ascii_character, self.color_code.0])
+    }
+
+    const fn from_bits(bits: u16) -> Self {
+        let [ascii_character, color] = bits.to_le_bytes();
+        Self {
+            ascii_character,
+            color_code: ColorCode(color),
+        }
+    }
 }
 
 #[repr(transparent)]
@@ -74,11 +89,18 @@ pub struct Writer {
     buffer: *mut Buffer,
 }
 
+// SAFETY: The VGA buffer is a fixed hardware address, valid on every CPU.
 unsafe impl Send for Writer {}
 
+impl Default for Writer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Writer {
-    pub fn new() -> Self {
-        Writer {
+    pub const fn new() -> Self {
+        Self {
             column_position: 0,
             color_code: ColorCode::new(Color::LightGreen, Color::Black),
             buffer: VGA_BUFFER as *mut Buffer,
@@ -86,16 +108,19 @@ impl Writer {
     }
 
     fn write_char_at(&mut self, row: usize, col: usize, screen_char: ScreenChar) {
+        // SAFETY: `buffer` points to the identity mapped VGA text buffer, and the index
+        // is bounds checked against its dimensions.
         unsafe {
-            let ptr = &mut (*self.buffer).chars[row][col] as *mut ScreenChar;
-            write_volatile(ptr, screen_char);
+            let ptr = &raw mut (*self.buffer).chars[row][col];
+            write_volatile(ptr.cast::<u16>(), screen_char.to_bits());
         }
     }
 
     fn read_char_at(&self, row: usize, col: usize) -> ScreenChar {
+        // SAFETY: See `write_char_at`.
         unsafe {
-            let ptr = &(*self.buffer).chars[row][col] as *const ScreenChar;
-            read_volatile(ptr)
+            let ptr = &raw const (*self.buffer).chars[row][col];
+            ScreenChar::from_bits(read_volatile(ptr.cast::<u16>()))
         }
     }
 
@@ -110,10 +135,14 @@ impl Writer {
                 let row = VGA_HEIGHT - 1;
                 let col = self.column_position;
 
-                self.write_char_at(row, col, ScreenChar {
-                    ascii_character: byte,
-                    color_code: self.color_code,
-                });
+                self.write_char_at(
+                    row,
+                    col,
+                    ScreenChar {
+                        ascii_character: byte,
+                        color_code: self.color_code,
+                    },
+                );
                 self.column_position += 1;
             }
         }
@@ -164,15 +193,15 @@ impl fmt::Write for Writer {
     }
 }
 
-lazy_static! {
-    pub static ref WRITER: Mutex<Writer> = Mutex::new(Writer::new());
-}
+pub static WRITER: Mutex<Writer> = Mutex::new(Writer::new());
 
 /// Print to the screen. With `force_unlock`, a held lock is broken instead of waited for
-/// (see `machine::io::_ekprint`).
+/// (see `machine::io::emergency_print`).
 pub fn print(args: fmt::Arguments, force_unlock: bool) {
     use core::fmt::Write;
     if force_unlock && WRITER.is_locked() {
+        // SAFETY: Only used on fatal paths, where the lock holder never resumes or tolerates a
+        // garbled screen.
         unsafe { WRITER.force_unlock() };
     }
     WRITER.lock().write_fmt(args).unwrap();

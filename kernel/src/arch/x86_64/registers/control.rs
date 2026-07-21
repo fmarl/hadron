@@ -15,8 +15,8 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-use core::arch::asm;
 use crate::arch::x86_64::structures::memory::VirtualAddress;
+use core::arch::asm;
 
 /// Control Register 2 (CR2)
 /// Contains the page fault linear address
@@ -27,6 +27,7 @@ impl Cr2 {
     #[inline]
     pub fn read() -> VirtualAddress {
         let value: u64;
+        // SAFETY: Reading CR2 has no side effects.
         unsafe {
             asm!("mov {}, cr2", out(reg) value, options(nomem, nostack, preserves_flags));
         }

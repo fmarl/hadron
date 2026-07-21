@@ -15,13 +15,13 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+use super::structures::paging::PageFaultErrorCode;
+use super::structures::{memory::VirtualAddress, table::DescriptorTablePointer};
 use core::arch::asm;
 use core::marker::PhantomData;
-use lazy_static::lazy_static;
-use super::structures::{memory::VirtualAddress, table::DescriptorTablePointer};
-use super::structures::paging::PageFaultErrorCode;
+use core::ops::Deref;
+use spin::Once;
 
-#[allow(dead_code)]
 extern "x86-interrupt" fn default_handler(stack_frame: InterruptStackFrame) {
     ekprintln!(
         ":: KERNEL PANIC ::\nCalled default_handler. Stacktrace:\n{:#?}",
@@ -33,7 +33,7 @@ extern "x86-interrupt" fn default_handler(stack_frame: InterruptStackFrame) {
 
 extern "x86-interrupt" fn divide_error_handler(stack_frame: InterruptStackFrame) {
     ekprintln!("\n:: EXCEPTION: DIVIDE BY ZERO ::");
-    ekprintln!("Instruction Pointer: {:?}", stack_frame.value.instruction_pointer);
+    ekprintln!("Instruction Pointer: {:?}", stack_frame.instruction_pointer);
     ekprintln!("{:#?}", stack_frame);
     super::halt();
 }
@@ -45,13 +45,13 @@ extern "x86-interrupt" fn debug_handler(stack_frame: InterruptStackFrame) {
 
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
     ekprintln!("\n:: EXCEPTION: BREAKPOINT ::");
-    ekprintln!("Instruction Pointer: {:?}", stack_frame.value.instruction_pointer);
+    ekprintln!("Instruction Pointer: {:?}", stack_frame.instruction_pointer);
     ekprintln!("{:#?}", stack_frame);
 }
 
 extern "x86-interrupt" fn invalid_opcode_handler(stack_frame: InterruptStackFrame) {
     ekprintln!("\n:: EXCEPTION: INVALID OPCODE ::");
-    ekprintln!("Instruction Pointer: {:?}", stack_frame.value.instruction_pointer);
+    ekprintln!("Instruction Pointer: {:?}", stack_frame.instruction_pointer);
     ekprintln!("{:#?}", stack_frame);
     super::halt();
 }
@@ -109,10 +109,7 @@ extern "x86-interrupt" fn page_fault_handler(
     super::halt();
 }
 
-extern "x86-interrupt" fn stack_fault_handler(
-    stack_frame: InterruptStackFrame,
-    error_code: u64,
-) {
+extern "x86-interrupt" fn stack_fault_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     ekprintln!("\n:: EXCEPTION: STACK FAULT ::");
     ekprintln!("Error Code: {:#x}", error_code);
     ekprintln!("{:#?}", stack_frame);
@@ -137,28 +134,31 @@ pub type DivergingInterruptHandlerFunctionWithErrorCode =
 pub type PageFaultInterruptHandlerFunction =
     extern "x86-interrupt" fn(InterruptStackFrame, error_code: PageFaultErrorCode);
 
-lazy_static! {
-    static ref IDT: InterruptDescriptorTable = {
-        let mut idt = InterruptDescriptorTable::new();
+static IDT: Once<InterruptDescriptorTable> = Once::new();
 
-        // CPU Exceptions (0x00 - 0x1F)
-        idt.divide_error.set_handler_fn(divide_error_handler);
-        idt.debug.set_handler_fn(debug_handler);
-        idt.breakpoint.set_handler_fn(breakpoint_handler);
-        idt.invalid_opcode.set_handler_fn(invalid_opcode_handler);
-        idt.double_fault.set_handler_fn(double_fault_handler)
-            .set_stack_index(super::gdt::DOUBLE_FAULT_IST_INDEX);
-        idt.general_protection.set_handler_fn(general_protection_handler);
-        idt.page_fault.set_handler_fn(page_fault_handler);
-        idt.stack_fault.set_handler_fn(stack_fault_handler);
-        idt.segment_not_present.set_handler_fn(segment_not_present_handler);
+fn build_idt() -> InterruptDescriptorTable {
+    let mut idt = InterruptDescriptorTable::new();
 
-        idt
-    };
+    // CPU Exceptions (0x00 - 0x1F)
+    idt.divide_error.set_handler_fn(divide_error_handler);
+    idt.debug.set_handler_fn(debug_handler);
+    idt.breakpoint.set_handler_fn(breakpoint_handler);
+    idt.invalid_opcode.set_handler_fn(invalid_opcode_handler);
+    idt.double_fault
+        .set_handler_fn(double_fault_handler)
+        .set_stack_index(super::gdt::DOUBLE_FAULT_IST_INDEX);
+    idt.general_protection
+        .set_handler_fn(general_protection_handler);
+    idt.page_fault.set_handler_fn(page_fault_handler);
+    idt.stack_fault.set_handler_fn(stack_fault_handler);
+    idt.segment_not_present
+        .set_handler_fn(segment_not_present_handler);
+
+    idt
 }
 
-/// Table to handle interrupts and exceptions. Affects x86 and x86_64.
-/// See: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+/// Table to handle interrupts and exceptions. Affects x86 and `x86_64`.
+/// See: <https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html>
 /// Intel® 64 and IA-32 Architectures Software Developer’s Manual Combined Volumes: 1, 2A, 2B, 2C, 2D, 3A, 3B, 3C, 3D, and 4
 /// Page 3220 - 3254
 #[repr(C)]
@@ -221,8 +221,9 @@ pub struct InterruptDescriptorTable {
     /// - The processor executed a WAIT/FWAIT instruction while the MP and TS flags of register CR0 were set,
     ///   regardless of the setting of the EM flag.
     /// - The processor executed an x87 FPU, MMX, or SSE/SSE2/SSE3 instruction (with the exception of MOVNTI,
-    ///   PAUSE, PREFETCHh, SFENCE, LFENCE, MFENCE, and CLFLUSH) while the TS flag in control register CR0 was set
+    ///   PAUSE, `PREFETCHh`, SFENCE, LFENCE, MFENCE, and CLFLUSH) while the TS flag in control register CR0 was set
     ///   and the EM flag is clear
+    ///
     /// If it is unclear what all this means, have a look at page 3228.
     ///
     /// No error code is pushed on the stack.
@@ -274,7 +275,8 @@ pub struct InterruptDescriptorTable {
     ///   privilege level, an LSS instruction, or a MOV or POP instruction to the SS register.
     /// - A canonical violation is detected in 64-bit mode during an operation that reference memory using the stack
     ///   pointer register containing a non-canonical memory address.
-    /// You should probably extending the limit of the stack segment or loading the missing stack segmet into memory.
+    ///
+    /// You should probably extend the limit of the stack segment or load the missing stack segment into memory.
     ///
     /// If the exception is caused by a not-present stack segment or by overflow of the new stack during an inter-privilege-
     /// level call, the error code contains a segment selector for the segment that caused the exception. Here, the exception
@@ -356,9 +358,19 @@ pub struct InterruptDescriptorTable {
     pub control_protection: InterruptDescriptorTableEntry<InterruptHandlerFunctionWithErrorCode>,
 }
 
+/// The stack frame the CPU pushes on an interrupt. Dereferences to its contents.
 #[repr(transparent)]
 pub struct InterruptStackFrame {
-    pub value: InterruptStackFrameValue,
+    value: InterruptStackFrameValue,
+}
+
+impl Deref for InterruptStackFrame {
+    type Target = InterruptStackFrameValue;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.value
+    }
 }
 
 #[repr(C)]
@@ -372,11 +384,12 @@ pub struct InterruptDescriptorTableEntry<T> {
     phantom: PhantomData<T>,
 }
 
+/// Loads the kernel IDT. Requires the GDT, as the gates use its code segment.
 pub fn init() {
-    IDT.init();
+    IDT.call_once(build_idt).load();
 
     #[cfg(debug_assertions)]
-    kprintln!("IDT initialized with {} exception handlers", 9);
+    kprintln!("IDT initialized");
 }
 
 #[repr(transparent)]
@@ -418,8 +431,14 @@ pub struct InterruptStackFrameValue {
     pub stack_segment: u64,
 }
 
+impl Default for InterruptDescriptorTable {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InterruptDescriptorTable {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             divide_error: InterruptDescriptorTableEntry::null(),
             debug: InterruptDescriptorTableEntry::null(),
@@ -447,21 +466,28 @@ impl InterruptDescriptorTable {
     }
 
     #[inline]
-    pub fn reset(&mut self) {
+    pub const fn reset(&mut self) {
         *self = Self::new();
     }
 
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "the IDT has 22 entries of 16 bytes"
+    )]
     fn as_descriptor_table_pointer(&self) -> DescriptorTablePointer {
         use core::mem::size_of;
 
         DescriptorTablePointer {
-            base: VirtualAddress::new(self as *const _ as u64),
+            base: VirtualAddress::from_ptr(self),
             limit: (size_of::<Self>() - 1) as u16,
         }
     }
 
+    /// Loads this IDT.
     #[inline]
-    pub fn init(&'static self) {
+    pub fn load(&'static self) {
+        // SAFETY: The table lives forever, and its entries are either not present or point
+        // to handlers with the matching signature, which `set_handler_fn` guarantees.
         unsafe {
             asm!(
                 "lidt [{}]",
@@ -472,66 +498,85 @@ impl InterruptDescriptorTable {
     }
 }
 
+/// A handler function that fits an IDT entry of type `Self`.
+pub trait HandlerFn {
+    fn addr(self) -> u64;
+}
+
+macro_rules! impl_handler_fn {
+    ($($ty:ty),*) => {
+        $(
+            impl HandlerFn for $ty {
+                #[inline]
+                fn addr(self) -> u64 {
+                    self as usize as u64
+                }
+            }
+        )*
+    };
+}
+
+impl_handler_fn!(
+    InterruptHandlerFunction,
+    InterruptHandlerFunctionWithErrorCode,
+    DivergingInterruptHandlerFunctionWithErrorCode,
+    PageFaultInterruptHandlerFunction
+);
+
 impl<T> InterruptDescriptorTableEntry<T> {
     #[inline]
-    pub fn null() -> Self {
+    pub const fn null() -> Self {
         Self {
             low_ptr: 0,
             gdt_selector: 0,
-            options: InterruptDescriptorTableEntryOptions::default(),
+            options: InterruptDescriptorTableEntryOptions::new(),
             middle_ptr: 0,
             high_ptr: 0,
             reserved: 0,
             phantom: PhantomData,
         }
     }
+}
 
+impl<T: HandlerFn> InterruptDescriptorTableEntry<T> {
+    /// Points this entry at `handler` and marks it present.
+    ///
+    /// # Panics
+    /// If the GDT is not initialized yet.
     #[inline]
-    fn set_handler_addr(&mut self, addr: u64) -> &mut InterruptDescriptorTableEntryOptions {
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "splits the handler address into the gate fields"
+    )]
+    pub fn set_handler_fn(&mut self, handler: T) -> &mut InterruptDescriptorTableEntryOptions {
+        let addr = handler.addr();
+
         self.low_ptr = addr as u16;
         self.middle_ptr = (addr >> 16) as u16;
         self.high_ptr = (addr >> 32) as u32;
 
-        self.gdt_selector = super::gdt::GLOBAL_DESCRIPTOR_TABLE.1.code_segment_selector.0;
+        self.gdt_selector = super::gdt::selectors().kernel_code.bits();
         self.options.set_present(true);
 
         &mut self.options
     }
 }
 
-impl InterruptDescriptorTableEntry<InterruptHandlerFunction> {
-    pub fn set_handler_fn(&mut self, handler: InterruptHandlerFunction) -> &mut InterruptDescriptorTableEntryOptions {
-        self.set_handler_addr(handler as u64)
-    }
-}
-
-impl InterruptDescriptorTableEntry<InterruptHandlerFunctionWithErrorCode> {
-    pub fn set_handler_fn(&mut self, handler: InterruptHandlerFunctionWithErrorCode) -> &mut InterruptDescriptorTableEntryOptions {
-        self.set_handler_addr(handler as u64)
-    }
-}
-
-impl InterruptDescriptorTableEntry<DivergingInterruptHandlerFunctionWithErrorCode> {
-    pub fn set_handler_fn(&mut self, handler: DivergingInterruptHandlerFunctionWithErrorCode) -> &mut InterruptDescriptorTableEntryOptions {
-        self.set_handler_addr(handler as u64)
-    }
-}
-
-impl InterruptDescriptorTableEntry<PageFaultInterruptHandlerFunction> {
-    pub fn set_handler_fn(&mut self, handler: PageFaultInterruptHandlerFunction) -> &mut InterruptDescriptorTableEntryOptions {
-        self.set_handler_addr(handler as u64)
-    }
-}
-
 impl Default for InterruptDescriptorTableEntryOptions {
     fn default() -> Self {
-        Self(0b1110_0000_0000)
+        Self::new()
     }
 }
 
 impl InterruptDescriptorTableEntryOptions {
+    /// A not present 64-bit interrupt gate.
     #[inline]
-    pub fn set_present(&mut self, present: bool) -> &mut Self {
+    pub const fn new() -> Self {
+        Self(0b1110_0000_0000)
+    }
+
+    #[inline]
+    pub const fn set_present(&mut self, present: bool) -> &mut Self {
         if present {
             self.0 |= 1 << 15;
         } else {
@@ -541,7 +586,7 @@ impl InterruptDescriptorTableEntryOptions {
     }
 
     #[inline]
-    pub fn disable_interrupts(&mut self, disable: bool) -> &mut Self {
+    pub const fn disable_interrupts(&mut self, disable: bool) -> &mut Self {
         if disable {
             self.0 &= !(1 << 8); // Clear interrupt gate bit
         } else {
@@ -550,9 +595,12 @@ impl InterruptDescriptorTableEntryOptions {
         self
     }
 
-    #[inline]
     /// `index` is the index into the TSS interrupt stack table. The hardware IST field
     /// is 1-based (0 means "no stack switch"), so `index + 1` is stored.
+    ///
+    /// # Panics
+    /// If `index` is 7 or larger.
+    #[inline]
     pub fn set_stack_index(&mut self, index: u16) -> &mut Self {
         assert!(index < 7, "The interrupt stack table has only 7 entries.");
         self.0 = (self.0 & 0xFFF8) | (index + 1);

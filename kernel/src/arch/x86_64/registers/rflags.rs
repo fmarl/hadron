@@ -77,15 +77,21 @@ bitflags! {
 
 #[inline]
 pub fn read() -> RFlags {
-    RFlags::from_bits_retain(u_read())
+    RFlags::from_bits_retain(read_raw())
 }
 
+/// Writes RFLAGS, keeping the reserved bits.
+///
+/// # Safety
+/// Changing flags like IF, TF or IOPL changes how the CPU behaves; the caller must make
+/// sure that this does not break memory safety.
 #[inline]
-pub unsafe fn u_write(flags: RFlags) {
-    let old_flags = u_read();
+pub unsafe fn write(flags: RFlags) {
+    let old_flags = read_raw();
     let reserved = old_flags & !(RFlags::all().bits());
     let new_flags = reserved | flags.bits();
 
+    // SAFETY: Guaranteed by the caller.
     unsafe {
         asm!(
             "push {}; popfq",
@@ -97,16 +103,12 @@ pub unsafe fn u_write(flags: RFlags) {
 }
 
 #[inline]
-fn u_read() -> u64 {
+fn read_raw() -> u64 {
     let result: u64;
 
+    // SAFETY: Reading RFLAGS has no side effects.
     unsafe {
-        asm!(
-            "pushfq; pop {}",
-            out(reg) result,
-            // No nomem/preserves_flags: popfq changes RFLAGS (incl. IF), and memory
-            // accesses must not be moved across a change of the interrupt flag.
-        );
+        asm!("pushfq; pop {}", out(reg) result, options(preserves_flags));
     }
 
     result

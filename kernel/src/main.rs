@@ -18,6 +18,7 @@
 #![no_std]
 #![no_main]
 #![feature(abi_x86_interrupt)]
+#![warn(clippy::undocumented_unsafe_blocks)]
 
 // Declared first, so its console macros are visible in all other modules
 #[macro_use]
@@ -29,7 +30,10 @@ mod plat;
 
 use kernel::boot::BootInfo;
 
+#[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn _start(boot_info: *const BootInfo) -> ! {
+    // SAFETY: Stage 2 passes a pointer to its BootInfo, which stays mapped; the magic is
+    // validated in init_kernel.
     kernel::boot::init_kernel(unsafe { &*boot_info })
 }

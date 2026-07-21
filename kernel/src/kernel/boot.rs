@@ -36,24 +36,13 @@ pub struct BootInfo {
 
 impl BootInfo {
     /// Validate boot info magic number
-    pub fn is_valid(&self) -> bool {
+    pub const fn is_valid(&self) -> bool {
         self.magic == BOOT_INFO_MAGIC
-    }
-
-    /// Create empty boot info (for bootloader)
-    #[allow(dead_code)]
-    pub const fn new() -> Self {
-        BootInfo {
-            magic: BOOT_INFO_MAGIC,
-            memory_map_ptr: 0,
-            memory_map_count: 0,
-            reserved: [0; 5],
-        }
     }
 }
 
 /// Memory map entry types
-#[allow(dead_code)]
+#[expect(dead_code, reason = "the memory map is not parsed yet")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
 pub enum MemoryType {
@@ -74,7 +63,7 @@ pub enum MemoryType {
 }
 
 /// Memory map entry
-#[allow(dead_code)]
+#[expect(dead_code, reason = "the memory map is not parsed yet")]
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct MemoryMapEntry {

@@ -15,46 +15,72 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+use core::fmt;
 use core::ops::Add;
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// A canonical 64-bit virtual address: bits 48..64 are copies of bit 47.
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct VirtualAddress(u64);
 
 impl VirtualAddress {
-    pub fn new(value: u64) -> Self {
-        Self(value)
+    /// Creates a virtual address.
+    ///
+    /// # Panics
+    /// If `addr` is not canonical.
+    #[inline]
+    pub const fn new(addr: u64) -> Self {
+        match Self::try_new(addr) {
+            Some(addr) => addr,
+            None => panic!("virtual address is not canonical"),
+        }
+    }
+
+    /// Creates a virtual address, or `None` if `addr` is not canonical.
+    #[inline]
+    pub const fn try_new(addr: u64) -> Option<Self> {
+        let truncated = Self::new_truncate(addr);
+        if truncated.0 == addr {
+            Some(truncated)
+        } else {
+            None
+        }
+    }
+
+    /// Creates a virtual address by sign extending bit 47.
+    #[inline]
+    pub const fn new_truncate(addr: u64) -> Self {
+        Self(((addr << 16).cast_signed() >> 16).cast_unsigned())
     }
 
     #[inline]
     pub fn from_ptr<T>(ptr: *const T) -> Self {
         Self::new(ptr as u64)
     }
-}
 
-impl core::fmt::Debug for VirtualAddress {
     #[inline]
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        write!(f, "{:#x}", self.0)
+    pub const fn as_u64(self) -> u64 {
+        self.0
     }
 }
 
-impl Default for VirtualAddress {
-    fn default() -> Self {
-        Self(0)
+impl fmt::Debug for VirtualAddress {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:#x}", self.0)
     }
 }
 
 impl Add<u64> for VirtualAddress {
     type Output = Self;
 
+    /// # Panics
+    /// On overflow or if the result is not canonical.
     #[inline]
     fn add(self, rhs: u64) -> Self::Output {
-        VirtualAddress::new(self.0 + rhs)
+        Self::new(self.0.checked_add(rhs).expect("virtual address overflow"))
     }
 }
 
-#[cfg(target_pointer_width = "64")]
 impl Add<usize> for VirtualAddress {
     type Output = Self;
 
@@ -64,48 +90,43 @@ impl Add<usize> for VirtualAddress {
     }
 }
 
-/// Physical memory address
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// A physical address. `x86_64` supports at most 52 physical address bits.
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct PhysicalAddress(u64);
 
 impl PhysicalAddress {
-    /// Create a new physical address
-    pub const fn new(value: u64) -> Self {
-        Self(value)
+    const MAX: u64 = (1 << 52) - 1;
+
+    /// Creates a physical address.
+    ///
+    /// # Panics
+    /// If `addr` has bits above bit 51 set.
+    #[inline]
+    pub const fn new(addr: u64) -> Self {
+        assert!(addr <= Self::MAX, "physical address exceeds 52 bits");
+        Self(addr)
     }
 
-    /// Get the raw u64 value
+    #[inline]
     pub const fn as_u64(self) -> u64 {
         self.0
     }
 }
 
-impl core::fmt::Debug for PhysicalAddress {
-    #[inline]
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        write!(f, "PhysAddr({:#x})", self.0)
-    }
-}
-
-impl core::fmt::Display for PhysicalAddress {
-    #[inline]
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+impl fmt::Debug for PhysicalAddress {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:#x}", self.0)
-    }
-}
-
-impl Default for PhysicalAddress {
-    fn default() -> Self {
-        Self(0)
     }
 }
 
 impl Add<u64> for PhysicalAddress {
     type Output = Self;
 
+    /// # Panics
+    /// On overflow or if the result exceeds 52 bits.
     #[inline]
     fn add(self, rhs: u64) -> Self::Output {
-        PhysicalAddress::new(self.0 + rhs)
+        Self::new(self.0.checked_add(rhs).expect("physical address overflow"))
     }
 }
