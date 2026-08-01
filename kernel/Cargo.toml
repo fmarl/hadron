@@ -4,6 +4,7 @@ version = "0.0.2"
 authors = ["Florian Marrero Liestmann <f.m.liestmann@fx-ttr.de>"]
 edition = "2024"
 build = "build.rs"
+publish = false
 
 [lints.rust]
 unsafe_code = "deny"
