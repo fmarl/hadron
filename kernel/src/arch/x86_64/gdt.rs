@@ -20,9 +20,7 @@ use core::mem::size_of;
 
 use spin::Once;
 
-use super::segmentation::{
-    CodeSegment, Descriptor, Segment32, SegmentSelector, TaskStateSegment, load_tss,
-};
+use super::segmentation::{Descriptor, SegmentSelector, TaskStateSegment, load_tss, set_cs};
 use super::structures::{memory::VirtualAddress, table::DescriptorTablePointer};
 
 pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
@@ -37,7 +35,6 @@ static mut DOUBLE_FAULT_STACK: Stack = Stack([0; STACK_SIZE]);
 static TSS: Once<TaskStateSegment> = Once::new();
 static GDT: Once<Gdt> = Once::new();
 
-/// The kernel GDT together with the selectors of its entries.
 struct Gdt {
     table: GlobalDescriptorTable,
     selectors: Selectors,
@@ -83,10 +80,9 @@ pub fn init() {
         gdt.selectors.tss.bits()
     );
 
-    // SAFETY: Both selectors were created by adding their descriptors to the GDT that was
-    // just loaded, and the TSS is 'static.
+    // SAFETY: both descriptors are in the GDT we just loaded, and the TSS is 'static.
     unsafe {
-        CodeSegment::set_reg(gdt.selectors.kernel_code);
+        set_cs(gdt.selectors.kernel_code);
         load_tss(gdt.selectors.tss);
     }
 }
@@ -126,7 +122,7 @@ impl GlobalDescriptorTable {
     /// Creates a GDT from raw descriptor values.
     ///
     /// # Safety
-    /// The values must be valid descriptors, as `load` makes the CPU use them.
+    /// The values must be valid descriptors, `load` hands them to the CPU.
     ///
     /// # Panics
     /// If `slice` has more than 8 entries.
@@ -195,8 +191,7 @@ impl GlobalDescriptorTable {
     /// Loads this GDT. Segment registers keep their old values until they are reloaded.
     #[inline]
     pub fn load(&'static self) {
-        // SAFETY: The table lives forever and only holds descriptors created by `add` or
-        // promised to be valid by the caller of `from_raw_slice`.
+        // SAFETY: the table is 'static, its entries come from add or from_raw_slice.
         unsafe {
             asm!(
                 "lgdt [{}]",

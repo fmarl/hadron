@@ -62,53 +62,47 @@ impl SegmentSelector {
     }
 }
 
-pub trait Segment32 {
-    fn get_reg() -> SegmentSelector;
-
-    /// # Safety
-    /// `sel` must select a valid descriptor of the right type in the loaded GDT.
-    unsafe fn set_reg(sel: SegmentSelector);
-}
-
-pub trait Segment64: Segment32 {
+pub trait Segment64 {
     const BASE: Msr;
     fn read_base() -> VirtualAddress;
     fn write_base(base: VirtualAddress);
 }
 
-pub struct CodeSegment;
+#[inline]
+pub fn read_cs() -> SegmentSelector {
+    let result: u16;
 
-impl Segment32 for CodeSegment {
-    fn get_reg() -> SegmentSelector {
-        let result: u16;
-
-        // SAFETY: Reading CS has no side effects.
-        unsafe {
-            asm!(
-                "mov {0:x}, cs",
-                out(reg) result,
-                options(nomem, nostack, preserves_flags)
-            );
-        }
-
-        SegmentSelector(result)
+    // SAFETY: only reads CS.
+    unsafe {
+        asm!(
+            "mov {0:x}, cs",
+            out(reg) result,
+            options(nomem, nostack, preserves_flags)
+        );
     }
 
-    unsafe fn set_reg(sel: SegmentSelector) {
-        // SAFETY: CS can only be reloaded by a far jump or return, here to the next
-        // instruction. The caller guarantees that `sel` is a valid code segment.
-        unsafe {
-            asm!(
-                "push {sel}",
-                "lea {tmp}, [2f + rip]",
-                "push {tmp}",
-                "retfq",
-                "2:",
-                sel = in(reg) u64::from(sel.0),
-                tmp = lateout(reg) _,
-                options(preserves_flags),
-            );
-        }
+    SegmentSelector(result)
+}
+
+/// Reloads the code segment register.
+///
+/// # Safety
+/// `sel` must select a valid 64-bit code segment in the loaded GDT.
+#[inline]
+pub unsafe fn set_cs(sel: SegmentSelector) {
+    // SAFETY: the caller guarantees a valid code segment. A far return to the next
+    // instruction is the only way to reload CS.
+    unsafe {
+        asm!(
+            "push {sel}",
+            "lea {tmp}, [2f + rip]",
+            "push {tmp}",
+            "retfq",
+            "2:",
+            sel = in(reg) u64::from(sel.0),
+            tmp = lateout(reg) _,
+            options(preserves_flags),
+        );
     }
 }
 
@@ -123,11 +117,11 @@ pub struct GSegment;
 /// Loads the task register.
 ///
 /// # Safety
-/// `sel` must select a valid, not busy TSS descriptor in the loaded GDT, and the TSS must
-/// stay valid for as long as it is loaded.
+/// `sel` must select an available TSS descriptor in the loaded GDT, and the TSS must stay
+/// valid while loaded.
 #[inline]
 pub unsafe fn load_tss(sel: SegmentSelector) {
-    // SAFETY: Guaranteed by the caller.
+    // SAFETY: upheld by the caller.
     unsafe {
         asm!("ltr {0:x}", in(reg) sel.0, options(nostack, preserves_flags));
     }
@@ -224,19 +218,12 @@ impl Descriptor {
         Self::UserSegment(DescriptorFlags::USER_CODE64.bits())
     }
 
+    /// A descriptor for `tss`, which lives forever, so the CPU can always use it.
     #[inline]
     pub fn tss_segment(tss: &'static TaskStateSegment) -> Self {
-        // SAFETY: The pointer is derived from a &'static reference, which ensures its validity.
-        unsafe { Self::tss_segment_unchecked(tss) }
-    }
-
-    #[inline]
-    /// # Safety
-    /// `tss` must point to a TSS that stays valid for as long as the descriptor is in use.
-    pub unsafe fn tss_segment_unchecked(tss: *const TaskStateSegment) -> Self {
         use self::DescriptorFlags as Flags;
 
-        let ptr = tss as u64;
+        let ptr = VirtualAddress::from_ptr(tss).as_u64();
 
         let mut low = Flags::PRESENT.bits();
         // base
