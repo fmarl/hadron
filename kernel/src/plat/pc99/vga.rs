@@ -23,74 +23,14 @@ const VGA_BUFFER: usize = 0xB8000;
 const VGA_WIDTH: usize = 80;
 const VGA_HEIGHT: usize = 25;
 
-#[expect(dead_code, reason = "the full VGA palette is kept for later use")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub enum Color {
-    Black = 0,
-    Blue = 1,
-    Green = 2,
-    Cyan = 3,
-    Red = 4,
-    Magenta = 5,
-    Brown = 6,
-    LightGray = 7,
-    DarkGray = 8,
-    LightBlue = 9,
-    LightGreen = 10,
-    LightCyan = 11,
-    LightRed = 12,
-    Pink = 13,
-    Yellow = 14,
-    White = 15,
-}
+/// Light green on black
+const COLOR: u16 = 0x0A;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-struct ColorCode(u8);
-
-impl ColorCode {
-    const fn new(foreground: Color, background: Color) -> Self {
-        Self(((background as u8) << 4) | (foreground as u8))
-    }
-}
-
-/// One cell of the text buffer. Accessed as a single `u16`, so the hardware always sees
-/// character and color together.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(C, align(2))]
-struct ScreenChar {
-    ascii_character: u8,
-    color_code: ColorCode,
-}
-
-impl ScreenChar {
-    const fn to_bits(self) -> u16 {
-        u16::from_le_bytes([self.ascii_character, self.color_code.0])
-    }
-
-    const fn from_bits(bits: u16) -> Self {
-        let [ascii_character, color] = bits.to_le_bytes();
-        Self {
-            ascii_character,
-            color_code: ColorCode(color),
-        }
-    }
-}
-
-#[repr(transparent)]
-struct Buffer {
-    chars: [[ScreenChar; VGA_WIDTH]; VGA_HEIGHT],
-}
-
+/// Text mode writer. Fills the screen top to bottom and scrolls once it is full.
 pub struct Writer {
-    column_position: usize,
-    color_code: ColorCode,
-    buffer: *mut Buffer,
+    row: usize,
+    column: usize,
 }
-
-// SAFETY: The VGA buffer is a fixed hardware address, valid on every CPU.
-unsafe impl Send for Writer {}
 
 impl Default for Writer {
     fn default() -> Self {
@@ -100,52 +40,38 @@ impl Default for Writer {
 
 impl Writer {
     pub const fn new() -> Self {
-        Self {
-            column_position: 0,
-            color_code: ColorCode::new(Color::LightGreen, Color::Black),
-            buffer: VGA_BUFFER as *mut Buffer,
-        }
+        Self { row: 0, column: 0 }
     }
 
-    fn write_char_at(&mut self, row: usize, col: usize, screen_char: ScreenChar) {
-        // SAFETY: `buffer` points to the identity mapped VGA text buffer, and the index
-        // is bounds checked against its dimensions.
-        unsafe {
-            let ptr = &raw mut (*self.buffer).chars[row][col];
-            write_volatile(ptr.cast::<u16>(), screen_char.to_bits());
-        }
+    /// A cell holds the character in the low and the color in the high byte. It is
+    /// accessed as one `u16`, so the hardware always sees both together.
+    fn cell(row: usize, column: usize) -> *mut u16 {
+        assert!(row < VGA_HEIGHT && column < VGA_WIDTH);
+        (VGA_BUFFER as *mut u16).wrapping_add(row * VGA_WIDTH + column)
     }
 
-    fn read_char_at(&self, row: usize, col: usize) -> ScreenChar {
-        // SAFETY: See `write_char_at`.
-        unsafe {
-            let ptr = &raw const (*self.buffer).chars[row][col];
-            ScreenChar::from_bits(read_volatile(ptr.cast::<u16>()))
-        }
+    fn write_cell(row: usize, column: usize, value: u16) {
+        // SAFETY: cell() keeps us inside the identity mapped text buffer.
+        unsafe { write_volatile(Self::cell(row, column), value) };
+    }
+
+    fn read_cell(row: usize, column: usize) -> u16 {
+        // SAFETY: see write_cell.
+        unsafe { read_volatile(Self::cell(row, column)) }
     }
 
     pub fn write_byte(&mut self, byte: u8) {
-        match byte {
-            b'\n' => self.new_line(),
-            byte => {
-                if self.column_position >= VGA_WIDTH {
-                    self.new_line();
-                }
-
-                let row = VGA_HEIGHT - 1;
-                let col = self.column_position;
-
-                self.write_char_at(
-                    row,
-                    col,
-                    ScreenChar {
-                        ascii_character: byte,
-                        color_code: self.color_code,
-                    },
-                );
-                self.column_position += 1;
-            }
+        if byte == b'\n' {
+            self.new_line();
+            return;
         }
+
+        if self.column >= VGA_WIDTH {
+            self.new_line();
+        }
+
+        Self::write_cell(self.row, self.column, (COLOR << 8) | u16::from(byte));
+        self.column += 1;
     }
 
     pub fn write_string(&mut self, s: &str) {
@@ -158,31 +84,35 @@ impl Writer {
     }
 
     fn new_line(&mut self) {
-        for row in 1..VGA_HEIGHT {
-            for col in 0..VGA_WIDTH {
-                let character = self.read_char_at(row, col);
-                self.write_char_at(row - 1, col, character);
-            }
+        if self.row + 1 < VGA_HEIGHT {
+            self.row += 1;
+        } else {
+            Self::scroll();
         }
-        self.clear_row(VGA_HEIGHT - 1);
-        self.column_position = 0;
+        self.column = 0;
     }
 
-    fn clear_row(&mut self, row: usize) {
-        let blank = ScreenChar {
-            ascii_character: b' ',
-            color_code: self.color_code,
-        };
-        for col in 0..VGA_WIDTH {
-            self.write_char_at(row, col, blank);
+    fn scroll() {
+        for row in 1..VGA_HEIGHT {
+            for column in 0..VGA_WIDTH {
+                Self::write_cell(row - 1, column, Self::read_cell(row, column));
+            }
+        }
+        Self::clear_row(VGA_HEIGHT - 1);
+    }
+
+    fn clear_row(row: usize) {
+        for column in 0..VGA_WIDTH {
+            Self::write_cell(row, column, (COLOR << 8) | u16::from(b' '));
         }
     }
 
     pub fn clear_screen(&mut self) {
         for row in 0..VGA_HEIGHT {
-            self.clear_row(row);
+            Self::clear_row(row);
         }
-        self.column_position = 0;
+        self.row = 0;
+        self.column = 0;
     }
 }
 
@@ -200,8 +130,8 @@ pub static WRITER: Mutex<Writer> = Mutex::new(Writer::new());
 pub fn print(args: fmt::Arguments, force_unlock: bool) {
     use core::fmt::Write;
     if force_unlock && WRITER.is_locked() {
-        // SAFETY: Only used on fatal paths, where the lock holder never resumes or tolerates a
-        // garbled screen.
+        // SAFETY: only on fatal paths. The lock holder either never runs again or can
+        // live with a garbled line.
         unsafe { WRITER.force_unlock() };
     }
     WRITER.lock().write_fmt(args).unwrap();
