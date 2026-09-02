@@ -6,6 +6,10 @@ edition = "2024"
 build = "build.rs"
 publish = false
 
+[features]
+# Trigger test exceptions during boot
+selftest = []
+
 [lints.rust]
 unsafe_code = "deny"
 unexpected_cfgs = { level = "deny", check-cfg = [] }

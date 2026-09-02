@@ -15,65 +15,44 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-/// Magic number to identify valid boot info
 pub const BOOT_INFO_MAGIC: u64 = 0x4841_4452_4F4E_0001; // "HADRON" + version
 
-/// Boot information passed from Stage 2 bootloader to kernel
+/// Handed over by Stage 2, see `boot_info` in boot/stage2.asm.
 #[repr(C)]
 pub struct BootInfo {
-    /// Magic number for validation
     pub magic: u64,
-
-    /// Pointer to memory map (to be implemented)
     pub memory_map_ptr: u64,
-
-    /// Number of memory map entries
     pub memory_map_count: u64,
-
-    /// Reserved for future use
     pub reserved: [u64; 5],
 }
 
 impl BootInfo {
-    /// Validate boot info magic number
     pub const fn is_valid(&self) -> bool {
         self.magic == BOOT_INFO_MAGIC
     }
 }
 
-/// Memory map entry types
+/// E820 memory types
 #[expect(dead_code, reason = "the memory map is not parsed yet")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
 pub enum MemoryType {
-    /// Usable RAM
     Usable = 1,
-    /// Reserved - unusable
     Reserved = 2,
-    /// ACPI reclaimable memory
     AcpiReclaimable = 3,
-    /// ACPI NVS memory
     AcpiNvs = 4,
-    /// Bad memory
     BadMemory = 5,
-    /// Bootloader reclaimable
     BootloaderReclaimable = 6,
-    /// Kernel and modules
     KernelAndModules = 7,
 }
 
-/// Memory map entry
 #[expect(dead_code, reason = "the memory map is not parsed yet")]
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct MemoryMapEntry {
-    /// Physical start address
     pub base: u64,
-    /// Length in bytes
     pub length: u64,
-    /// Memory type
     pub mem_type: MemoryType,
-    /// Reserved for alignment
     pub reserved: u32,
 }
 
@@ -92,8 +71,7 @@ pub fn init_kernel(boot_info: &BootInfo) -> ! {
 
     crate::arch::init_cpu();
 
-    // Test exception handling (only in debug builds)
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "selftest")]
     {
         kprintln!("\nTesting exception handling...");
         kprintln!("Triggering breakpoint exception (INT 3)...");

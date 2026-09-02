@@ -16,7 +16,7 @@ export RUSTC_BOOTSTRAP ?= 1
 # Default target.
 .PHONY: all
 all:
-	cd .. && cargo build --profile $(RUST_PROFILE) --package hadron
+	cd .. && cargo build --profile $(RUST_PROFILE) --package hadron $(if $(FEATURES),--features $(FEATURES))
 	cp ../target/x86_64-unknown-hadron/$(RUST_PROFILE_SUBDIR)/hadron hadron.elf
 
 # Remove object files and the final executable.
