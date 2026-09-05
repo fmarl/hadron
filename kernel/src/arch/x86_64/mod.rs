@@ -33,14 +33,10 @@ mod segmentation;
 
 /// Set up the CPU: segmentation, TSS and the exception vectors.
 pub fn init_cpu() {
-    kprintln!("Setting up GDT: ");
     gdt::init();
-
-    kprintln!("Setting up IDT: ");
     idt::init();
 }
 
-/// Stop this CPU for good.
 pub fn halt() -> ! {
     instructions::disable();
     loop {
