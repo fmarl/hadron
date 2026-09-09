@@ -3,16 +3,20 @@ override MAKEFLAGS += -rR
 
 override IMAGE_NAME := hadron
 
+# KVM if available, else software emulation
+QEMU_FLAGS := -accel kvm -accel tcg -cpu max -m 2G \
+	-drive file=$(IMAGE_NAME).img,format=raw -serial file:serial.log
+
 .PHONY: all
 all: $(IMAGE_NAME).img
 
 .PHONY: run
 run: $(IMAGE_NAME).img
-	qemu-system-x86_64 -m 2G -drive file=$(IMAGE_NAME).img,format=raw -serial file:serial.log
+	qemu-system-x86_64 $(QEMU_FLAGS)
 
 .PHONY: run-debug
 run-debug: $(IMAGE_NAME).img
-	qemu-system-x86_64 -m 2G -drive file=$(IMAGE_NAME).img,format=raw -serial file:serial.log -no-reboot -no-shutdown -s -S
+	qemu-system-x86_64 $(QEMU_FLAGS) -no-reboot -no-shutdown -s -S
 
 .PHONY: gdb
 gdb: kernel
