@@ -2,10 +2,10 @@
 
 .PHONY: all clean
 
-all: KERNEL.BIN
+all: STAGE2.BIN
 
-KERNEL.BIN: stage2.asm
-	nasm -f bin -o KERNEL.BIN stage2.asm
+STAGE2.BIN: stage2.asm
+	nasm -f bin -o STAGE2.BIN stage2.asm
 
 clean:
-	rm -f KERNEL.BIN
+	rm -f STAGE2.BIN

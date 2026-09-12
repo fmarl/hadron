@@ -5,7 +5,7 @@ debug/
 target/
 build/
 hadron.img
-boot/KERNEL.BIN
+boot/STAGE2.BIN
 serial.log
 
 # Remove Cargo.lock from gitignore if creating an executable, leave it for libraries

@@ -29,7 +29,7 @@ syndicate:
 		cd .. && git clone https://github.com/fmarl/syndicate syndicate-bootloader; \
 	fi
 	@echo "Building Syndicate bootloader..."
-	$(MAKE) -C ../syndicate-bootloader STAGE2_FILE=KERNEL.BIN KERNEL_FILE=HADRON.ELF
+	$(MAKE) -C ../syndicate-bootloader KERNEL_FILE=HADRON.ELF
 
 .PHONY: kernel
 kernel:
@@ -56,8 +56,8 @@ $(IMAGE_NAME).img: syndicate kernel stage2
 	# Format partition as FAT32
 	@echo "Formatting FAT32 partition..."
 	mformat -i $(IMAGE_NAME).img@@1M -F -T $$((64 * 2048 - 2048)) -v "HADRON" ::
-	# Copy Stage 2 bootloader (KERNEL.BIN)
-	mcopy -i $(IMAGE_NAME).img@@1M boot/KERNEL.BIN ::KERNEL.BIN
+	# Copy Stage 2 bootloader
+	mcopy -i $(IMAGE_NAME).img@@1M boot/STAGE2.BIN ::STAGE2.BIN
 	# Copy stripped Hadron kernel (Syndicate loads at most 512 KiB)
 	strip -o kernel/hadron-stripped.elf kernel/hadron.elf
 	@test $$(stat -c %s kernel/hadron-stripped.elf) -le 524288 || \
