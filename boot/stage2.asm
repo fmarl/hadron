@@ -10,7 +10,7 @@ KERNEL_VIRT equ 0xFFFFFFFF80000000
 KERNEL_PHYS equ 0x200000
 
 ; Page tables live above 1MB, clear of the ELF buffer Syndicate fills at
-; 0x10000 - 0x90000 (KERNEL.BIN, max 512 KiB)
+; 0x10000 - 0x90000 (HADRON.ELF, max 512 KiB)
 PAGE_TABLES equ 0x100000
 
 ; Entry point from Syndicate Stage 1
@@ -164,10 +164,6 @@ protected_mode_entry:
     mov ss, ax
     mov esp, 0x7C00
 
-    ; Print message
-    mov esi, msg_protected
-    call print_string_pm
-
     ; Enable SSE (the kernel is compiled with SSE): clear EM, set MP
     mov eax, cr0
     and eax, ~(1 << 2)
@@ -243,40 +239,6 @@ setup_page_tables:
     add eax, 0x200000
     loop .map_kernel
 
-    ret
-
-; Print string in Protected Mode
-; ESI = pointer to null-terminated string
-print_string_pm:
-    pusha
-    mov edi, [vga_cursor_pm]
-    mov ah, 0x0F
-.loop:
-    lodsb
-    test al, al
-    jz .done
-    cmp al, 0x0A           ; Newline?
-    je .newline
-    stosw
-    jmp .loop
-.newline:
-    ; Move to next line
-    mov eax, edi
-    sub eax, 0xB8000
-    shr eax, 1             ; Divide by 2 (each char = 2 bytes)
-    mov ebx, 80
-    xor edx, edx
-    div ebx                ; EAX = row, EDX = col
-    inc eax                ; Next row
-    mov edx, 80
-    mul edx                ; EAX = row * 80
-    shl eax, 1             ; Multiply by 2
-    add eax, 0xB8000
-    mov edi, eax
-    jmp .loop
-.done:
-    mov [vga_cursor_pm], edi
-    popa
     ret
 
 ;-----------------------------------------------------------
@@ -489,7 +451,6 @@ boot_drive: db 0
 
 msg_stage2:         db 'Hadron Stage 2 Bootloader', 0xD, 0xA, 0
 msg_no_long_mode:   db 'ERROR: Long Mode not supported', 0xD, 0xA, 0
-msg_protected:      db 'Protected Mode OK', 0xA, 0
 msg_long_mode:      db 'Long Mode OK', 0xA, 0
 msg_load_kernel:    db 'Parsing ELF...', 0xA, 0
 msg_jump_kernel:    db 'Jumping to kernel...', 0xA, 0
@@ -497,7 +458,6 @@ msg_invalid_elf:    db 'ERROR: Invalid ELF kernel', 0xA, 0
 msg_segment_too_large: db 'ERROR: Kernel segment outside of the mapped 6MB', 0xA, 0
 
 kernel_entry:       dq 0
-vga_cursor_pm:      dd 0xB8000  ; Protected Mode VGA cursor
 vga_cursor_64:      dq 0xB8000  ; Long Mode VGA cursor
 
 ; Boot info structure
