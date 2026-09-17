@@ -18,16 +18,14 @@
 use crate::arch::x86_64::structures::memory::VirtualAddress;
 use core::arch::asm;
 
-/// Control Register 2 (CR2)
-/// Contains the page fault linear address
+/// CR2 holds the address of the last page fault.
 pub struct Cr2;
 
 impl Cr2 {
-    /// Read the current page fault linear address from CR2
     #[inline]
     pub fn read() -> VirtualAddress {
         let value: u64;
-        // SAFETY: Reading CR2 has no side effects.
+        // SAFETY: only reads CR2.
         unsafe {
             asm!("mov {}, cr2", out(reg) value, options(nomem, nostack, preserves_flags));
         }

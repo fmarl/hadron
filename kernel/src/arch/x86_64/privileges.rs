@@ -38,7 +38,6 @@ impl PLevel {
     }
 }
 
-/// Error for a value that is not a privilege level.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InvalidPLevel(pub u16);
 

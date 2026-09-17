@@ -20,8 +20,8 @@ use core::arch::asm;
 /// Enables interrupts.
 #[inline]
 pub fn enable() {
-    // SAFETY: Interrupts only run handlers from the loaded IDT. No nomem: this acts as a
-    // compiler barrier for the critical section.
+    // SAFETY: interrupts only enter handlers from the loaded IDT.
+    // No nomem, so this also works as a compiler barrier.
     unsafe {
         asm!("sti", options(nostack));
     }
@@ -30,27 +30,25 @@ pub fn enable() {
 /// Disables interrupts.
 #[inline]
 pub fn disable() {
-    // SAFETY: Masking interrupts cannot break memory safety. No nomem: this acts as a
-    // compiler barrier for the critical section.
+    // SAFETY: masking interrupts is always fine.
+    // No nomem, so this also works as a compiler barrier.
     unsafe {
         asm!("cli", options(nostack));
     }
 }
 
-/// Triggers a breakpoint exception (INT 3).
 #[inline]
 pub fn int3() {
-    // SAFETY: Runs the breakpoint handler of the loaded IDT. No nomem: the handler may
-    // access memory.
+    // SAFETY: enters the breakpoint handler of the loaded IDT.
+    // No nomem, the handler touches memory.
     unsafe {
         asm!("int3", options(nostack));
     }
 }
 
-/// Waits for the next interrupt.
 #[inline]
 pub fn hlt() {
-    // SAFETY: Halting until the next interrupt has no side effects.
+    // SAFETY: only waits for the next interrupt.
     unsafe {
         asm!("hlt", options(nomem, nostack, preserves_flags));
     }

@@ -30,14 +30,13 @@ impl Msr {
     }
 
     /// # Safety
-    /// The MSR must exist on this CPU, and reading it must not have side effects that
-    /// break memory safety.
+    /// The MSR must exist, and reading it must not break memory safety.
     #[inline]
     pub unsafe fn read(&self) -> u64 {
         let high: u32;
         let low: u32;
 
-        // SAFETY: Guaranteed by the caller.
+        // SAFETY: upheld by the caller.
         unsafe {
             asm!(
                 "rdmsr",
@@ -52,7 +51,7 @@ impl Msr {
     }
 
     /// # Safety
-    /// The MSR must exist on this CPU, and writing `value` must not break memory safety.
+    /// The MSR must exist, and writing `value` must not break memory safety.
     #[inline]
     #[expect(
         clippy::cast_possible_truncation,
@@ -62,7 +61,7 @@ impl Msr {
         let high = (value >> 32) as u32;
         let low = value as u32;
 
-        // SAFETY: Guaranteed by the caller.
+        // SAFETY: upheld by the caller.
         unsafe {
             asm!(
                 "wrmsr",

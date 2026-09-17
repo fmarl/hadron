@@ -23,7 +23,6 @@
 pub mod serial;
 pub mod vga;
 
-/// Prepare the kernel consoles.
 pub fn init_console() {
     serial::init();
     vga::WRITER.lock().clear_screen();
